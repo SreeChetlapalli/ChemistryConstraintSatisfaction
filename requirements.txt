@@ -1,0 +1,17 @@
+# Chemistry Constraint Satisfaction — Correct-by-Design Neuro-Symbolic Molecular Generation
+# Python 3.10+ recommended (for PyTorch 2.x and Z3)
+
+# Core: SMT solver for chemical axioms (mass conservation, bond valency)
+z3-solver>=4.12.0
+
+# Deep learning: molecular diffusion model
+torch>=2.0.0
+numpy>=1.24.0
+
+# Chemistry / molecules (optional but recommended for parsing SMILES, valency rules)
+# rdkit is often installed via conda: conda install -c conda-forge rdkit
+# Uncomment if using pip and your platform supports it:
+# rdkit>=2023.9.0
+
+# Utilities
+tqdm>=4.65.0
