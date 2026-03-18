@@ -1,19 +1,10 @@
 """
-chemical_axioms.py
-~~~~~~~~~~~~~~~~~~
-Z3-backed chemical axioms used by the Digital Supervisor.
+Chemical constraint checks.
 
-Axioms enforced
----------------
-1. Mass conservation   — total atomic mass of products == reactants.
-2. Bond valency        — every atom's bond count <= its max valency.
-3. Charge conservation — net formal charge is preserved across the reaction.
-4. Hydrogen count      — implicit-H budget is consistent with valency.
-
-All public functions return a ``ConstraintResult`` named-tuple:
-    sat   : bool   – True if the molecular state satisfies all axioms
-    model : dict   – Z3 model witness (empty on UNSAT)
-    reason: str    – human-readable explanation of any violation
+The supervisor uses these helpers to verify candidates against a few
+simple rules (mass, charge, and bond valency). When `z3` is available we
+can run the same checks with a solver; otherwise we fall back to a pure
+Python implementation.
 """
 
 from __future__ import annotations
@@ -64,8 +55,8 @@ MAX_VALENCY: Dict[str, int] = {
     "I":  1,
 }
 
-#: Valency adjustment when atom carries a formal charge.
-#  e.g. N⁺ can hold 4 bonds, O⁻ is content with 1.
+#: Extra valency allowed when an atom has a formal charge.
+#  Example: N with +1 charge can hold 4 bonds; O with -1 keeps valency at 1.
 CHARGE_VALENCY_DELTA: Dict[str, Dict[int, int]] = {
     "N": {+1: +1, -1: -1},
     "O": {-1: -1},
@@ -140,7 +131,7 @@ def _check_pure_python(
     products: List[MolecularState],
     tolerance: float = 0.02,
 ) -> ConstraintResult:
-    """Fast, dependency-free constraint checker."""
+    """Check constraints without Z3."""
     violations: List[str] = []
 
     # 1. Mass conservation
@@ -183,10 +174,10 @@ def _check_z3(
     tolerance: float = 0.02,
 ) -> ConstraintResult:
     """
-    Encode chemical axioms as Z3 constraints and call the SMT solver.
+    Check constraints using Z3.
 
-    Uses real-valued arithmetic for mass and integer arithmetic for charge /
-    valency.  Returns UNSAT with explanations if any axiom is violated.
+    This version uses real arithmetic for mass and integer arithmetic for
+    charge and valency.
     """
     if not Z3_AVAILABLE:
         raise RuntimeError("z3 is not installed; use _check_pure_python instead.")
@@ -194,10 +185,8 @@ def _check_z3(
     solver = z3.Solver()
     violations: List[str] = []
 
-    # ---- symbolic variables ------------------------------------------------
-    # We create one symbolic variable per atom for bond count so Z3 can
-    # reason about them; the actual values are asserted as equalities, making
-    # this effectively a verification (not synthesis) query.
+    # Set up Z3 constraints. We treat the provided values as fixed facts and
+    # ask whether they violate the valency bounds.
 
     # Mass conservation (Real arithmetic)
     r_mass_expr = z3.RealVal(0)
@@ -219,7 +208,7 @@ def _check_z3(
     result_mass = solver.check()
     solver.reset()
     if result_mass == z3.sat:
-        # The "violation" query is satisfiable => mass is NOT conserved
+        # If the "violation" query is satisfiable, the masses differ too much.
         from fractions import Fraction
         r_val = float(Fraction(str(z3.simplify(r_mass_expr))))
         p_val = float(Fraction(str(z3.simplify(p_mass_expr))))
@@ -241,7 +230,7 @@ def _check_z3(
             bonds_var = z3.Int(f"{mol.name}_{atom.element}_{i}_bonds")
             max_val   = z3.IntVal(atom.effective_valency)
             solver.add(bonds_var == z3.IntVal(atom.total_bonds))
-            solver.add(bonds_var > max_val)          # violation query
+            solver.add(bonds_var > max_val)          # ask if valency is exceeded
             if solver.check() == z3.sat:
                 violations.append(
                     f"{mol.name}: {atom.element}[{i}] has {atom.total_bonds} bonds "

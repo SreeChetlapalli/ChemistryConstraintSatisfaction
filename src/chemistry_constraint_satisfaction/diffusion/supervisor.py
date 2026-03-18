@@ -1,53 +1,21 @@
 """
-supervisor.py
-~~~~~~~~~~~~~
-Digital Supervisor — the heart of Correct-by-Design molecular generation.
+Supervisor loop for the diffusion model.
 
-The supervisor wraps the diffusion model and intercepts every reverse step.
-At each step it:
-
-  1. Calls ``model.reverse_step()`` to get a candidate x_{t-1}, adj_{t-1}.
-  2. Decodes the candidate into a ``MolecularState``.
-  3. Runs ``check_intermediate()`` (and optionally ``check_reaction()``) via Z3.
-  4a. If VALID   → commits the step and moves on.
-  4b. If INVALID → attempts a correction; if that also fails, backtracks
-      to the previous valid state and re-samples (up to ``max_retries``).
-
-After the full trajectory completes, the supervisor always runs a final
-``check_reaction()`` to verify mass and charge conservation end-to-end.
-
-Usage example
--------------
->>> from chemistry_constraint_satisfaction.constraints import Atom, MolecularState
->>> from chemistry_constraint_satisfaction.diffusion.model import (
-...     MolecularDiffusionModel, encode_molecule)
->>> from chemistry_constraint_satisfaction.diffusion.supervisor import Supervisor
->>>
->>> ch3br = MolecularState(name="CH3Br", atoms=[
-...     Atom("C", bonds=4), Atom("Br", bonds=1),
-...     Atom("H", bonds=1), Atom("H", bonds=1), Atom("H", bonds=1),
-... ])
->>> oh_minus = MolecularState(name="OH-", atoms=[
-...     Atom("O", bonds=1, formal_charge=-1), Atom("H", bonds=1),
-... ])
->>> model = MolecularDiffusionModel()
->>> sup   = Supervisor(model, reactants=[ch3br, oh_minus], T=10, verbose=True)
->>> result = sup.run()
->>> print(result.final_check)
+At each reverse step it decodes the candidate into a `MolecularState`, checks
+the chemistry constraints, and either commits the step, tries a small fix,
+or backtracks and re-samples.
 """
 
 from __future__ import annotations
 
-import copy
 import dataclasses
 import time
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import numpy as np
 
 from ..constraints.chemical_axioms import (
-    Atom, MolecularState, ConstraintResult,
-    check_reaction, check_intermediate,
+    MolecularState, ConstraintResult, check_intermediate, check_reaction,
 )
 from .model import MolecularDiffusionModel, encode_molecule
 
@@ -58,7 +26,7 @@ from .model import MolecularDiffusionModel, encode_molecule
 
 @dataclasses.dataclass
 class StepRecord:
-    """Log entry for a single denoising step."""
+    """One entry in the per-step log."""
     t: int
     attempt: int
     constraint_result: ConstraintResult
@@ -68,7 +36,7 @@ class StepRecord:
 
 @dataclasses.dataclass
 class GenerationResult:
-    """Full result of a supervised generation run."""
+    """Result returned by `Supervisor.run()`."""
     product: MolecularState
     reactants: List[MolecularState]
     final_check: ConstraintResult
@@ -84,7 +52,7 @@ class GenerationResult:
     def summary(self) -> str:
         lines = [
             "=" * 60,
-            "  Digital Supervisor — Generation Summary",
+            "  Supervisor — Generation Summary",
             "=" * 60,
             f"  Product     : {self.product.name}",
             f"  Atoms       : {len(self.product.atoms)}",
@@ -110,8 +78,7 @@ class GenerationResult:
 
 def _fix_valency(mol: MolecularState) -> MolecularState:
     """
-    Minimal correction: reduce bond count on over-valenced atoms.
-    Returns a new MolecularState (does not mutate in place).
+    Reduce bonds on atoms that exceed their allowed valency.
     """
     fixed_atoms = []
     for atom in mol.atoms:
@@ -131,8 +98,7 @@ def _fix_mass(
     tolerance: float = 0.02,
 ) -> MolecularState:
     """
-    Adjust implicit-H counts to bring mass closer to target.
-    Only modifies hydrogen budget (safest change).
+    Adjust implicit hydrogen so total mass moves toward the target.
     """
     from ..constraints.chemical_axioms import ATOMIC_MASS
     current = mol.total_mass()
@@ -165,8 +131,7 @@ def _fix_mass(
 
 class Supervisor:
     """
-    Digital Supervisor that wraps the diffusion model and enforces chemical
-    axioms at every denoising step.
+    Runs the diffusion model while enforcing chemistry checks at each step.
 
     Parameters
     ----------
@@ -206,8 +171,7 @@ class Supervisor:
 
     def run(self) -> GenerationResult:
         """
-        Run the full supervised reverse diffusion trajectory.
-        Returns a GenerationResult regardless of success.
+        Run the full reverse diffusion loop.
         """
         t0 = time.perf_counter()
         step_log: List[StepRecord] = []
