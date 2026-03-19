@@ -1,9 +1,9 @@
 """
-tests/test_chemical_axioms.py
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Unit tests for the Z3-backed chemical axiom checker.
-Covers mass conservation, charge conservation, and bond valency.
-Tests pass with or without Z3 installed (pure-Python fallback is also tested).
+Unit tests for the chemical constraint checkers.
+
+These cover mass conservation, charge conservation, and bond valency.
+The suite runs with or without Z3 installed (pure-Python fallback is tested
+as well).
 """
 
 import sys

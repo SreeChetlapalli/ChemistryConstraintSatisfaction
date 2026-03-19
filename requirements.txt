@@ -1,4 +1,4 @@
-# Chemistry Constraint Satisfaction — Correct-by-Design Neuro-Symbolic Molecular Generation
+# Chemistry Constraint Satisfaction
 # Python 3.10+ recommended (for PyTorch 2.x and Z3)
 
 # Core: SMT solver for chemical axioms (mass conservation, bond valency)

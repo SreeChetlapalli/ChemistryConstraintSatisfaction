@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 """
-demo.py
-~~~~~~~
-End-to-end demonstration of Chemistry Constraint Satisfaction.
+Small demo script for Chemistry Constraint Satisfaction.
 
-Shows:
-  1. Constraint-only checks (no diffusion) on known valid/invalid molecules.
-  2. Full supervised diffusion generation for CH₃Br + OH⁻ → CH₃OH + Br⁻.
-  3. A short benchmark comparing supervised vs unsupervised validity rates.
-
-Run:  python scripts/demo.py
+Runs a few quick constraint checks and then shows one supervised diffusion
+run for CH3Br + OH- -> CH3OH + Br-.
+Run: python scripts/demo.py
 """
 
 import sys, os, time, random
@@ -101,8 +96,8 @@ def demo_constraints():
 
 def demo_generation():
     print(f"\n{SEP}")
-    print("  PART 2 — Digital Supervisor in Action")
-    print("  Reaction: CH₃Br + OH⁻  →  (supervised diffusion)  →  ?")
+    print("  PART 2 — Supervisor loop demo")
+    print("  Reaction: CH3Br + OH-  ->  (supervised diffusion)  ->  ?")
     print(SEP)
 
     model = MolecularDiffusionModel(hidden_dim=64, seed=42)
@@ -193,9 +188,8 @@ def demo_benchmark(n: int = 50):
     print(f"    {'Full conservation validity':<30} "
           f"{sup_full_ok/n*100:>10.1f}%  {raw_full_ok/n*100:>10.1f}%")
     print()
-    print("  NOTE: The supervisor GUARANTEES valency correctness at every step.")
-    print("  Full mass/charge conservation requires a trained model so the GNN")
-    print("  learns to preserve atom identity. With random weights it cannot.")
+    print("  Note: the supervisor focuses on per-step valency consistency.")
+    print("  Mass/charge conservation depends on how well the model is trained.")
     print("  See notebooks/demo.ipynb to train and observe improving full validity.")
 
 

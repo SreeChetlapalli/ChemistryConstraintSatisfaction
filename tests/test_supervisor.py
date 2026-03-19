@@ -1,9 +1,8 @@
 """
-tests/test_supervisor.py
-~~~~~~~~~~~~~~~~~~~~~~~~
-Integration tests for the Digital Supervisor.
-Tests the full supervised generation loop, correction strategies,
-backtracking logic, and the GenerationResult data class.
+Integration tests for the supervisor loop.
+
+Covers the full supervised generation flow (including correction and
+backtracking) and basic checks on `GenerationResult`.
 """
 
 import sys

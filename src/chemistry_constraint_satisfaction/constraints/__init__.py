@@ -1,7 +1,4 @@
-"""
-Z3-backed chemical axioms: mass conservation, bond valency, etc.
-Used by the supervisor to verify/correct each denoising step.
-"""
+"""Constraint checks (Z3-backed when available)."""
 
 from .chemical_axioms import (
     Atom,

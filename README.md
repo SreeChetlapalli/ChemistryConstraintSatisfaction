@@ -1,10 +1,10 @@
 # Chemistry Constraint Satisfaction
 
-**Correct-by-Design neuro-symbolic molecular generation** — integrating Z3 (SMT) as a "Digital Supervisor" into the generative loop of a molecular diffusion model to eliminate chemical hallucinations.
+**Constraint-checked molecular generation** — uses Z3 to verify mass/charge conservation and bond valency during a diffusion-style generation loop.
 
 ---
 
-## Problem: Chemical Hallucinations in Generative AI
+## Problem: Invalid molecules from generative models
 
 Generative models often produce **physically impossible molecules** or **violate conservation laws** during reaction prediction. For example:
 
@@ -12,49 +12,48 @@ Generative models often produce **physically impossible molecules** or **violate
 - Atoms disappearing or appearing without conservation
 - Invalid bond valencies
 
-The usual fix is to generate many candidates and discard invalid ones — slow and wasteful.
+The usual workaround is to generate many candidates and discard the invalid ones. That can be slow and wasteful.
 
 ---
 
-## Approach: Enforce Correctness During Generation
+## Approach: Check constraints during generation
 
-This project proposes a **Correct-by-Design** architecture that:
+The codebase implements a constraint-checking wrapper around the diffusion model:
 
-1. **Pauses the AI at each denoising step** of a molecular diffusion model.
-2. **Verifies intermediate states** against hard chemical axioms (e.g., mass conservation, bond valency) using **Z3** (Satisfiability Modulo Theories).
-3. **Corrects or backtracks** when constraints are violated (e.g., undo last step, try a different diffusion move).
-4. **Guarantees** that 100% of generated outputs are chemically valid.
+1. After each reverse/denoising step, decode the candidate into a `MolecularState`.
+2. Check intermediate states against chemical axioms (mass/charge conservation, bond valency). If `z3` is installed, the Z3-backed checker is used.
+3. If a step fails, try a small correction and/or backtrack (bounded by `max_retries` and `max_backtracks`).
+4. At the end, validate the full reaction with `check_reaction`.
 
 ### Example
 
 - **Input:** reactants such as CH₃Br and OH⁻  
-- **Process:** Generate product step-by-step; at each step, Z3 checks mass conservation and valency.  
-- **If the model proposes an invalid state** (e.g., C with 5 bonds): undo the last step and try another move (add/move atom).  
+- **Process:** Generate product step-by-step; after each step, the constraint checker validates valency (and the final step validates mass/charge conservation).  
+- **If a decoded state is invalid** (e.g., carbon with 5 bonds): backtrack and try again (within the retry/backtrack limits).  
 - **Output:** Chemically valid result, e.g. CH₃OH + Br⁻.
 
-Reaction-level symbolic constraints are enforced **during** generation, not after.
+Constraint checks happen during generation, rather than only filtering after the fact.
 
 ---
 
-## Intellectual Merit
+## Design Notes
 
-- Current probabilistic generators **learn** chemistry from data and often violate hard rules; invalid molecules are then **discarded after** generation.
-- This work moves to an **integrated verifier** that ensures correctness **while** constructing molecules.
-- Z3 can express **exact** conservation laws; the generative model is **nudged to comply** via minimal corrections, giving formal guarantees for targeted reaction classes.
-
----
-
-## Broader Impact
-
-- **Trustworthy AI in the physical sciences:** From "probabilistic guesser" to a scientifically rigorous tool.
-- **Fewer failed experiments:** Reliable, valid reaction pathways reduce wasted lab effort on nonsensical AI suggestions.
-- **Stakeholders:** Chemists, pharmaceutical researchers, and anyone needing trustworthy molecule generation.
+- Instead of filtering invalid candidates after generation, this wrapper only commits steps that pass the selected checks.
+- When Z3 is installed, checks are run with the solver; otherwise there is a pure-Python fallback.
+- The final output is still verified with `check_reaction` to confirm mass and charge conservation.
 
 ---
 
-## Risks and Mitigations
+## Why this helps
 
-- **Latency:** Letting the logic engine "think" at every step could make generation slow. Trade-off: less time sorting through thousands of invalid candidates vs. more compute per step. Cost is currently low; open-source stack (PyTorch, Z3) and GPU access via **Google Colab** are sufficient to start.
+- Fewer invalid candidates make it easier to evaluate reaction pathways.
+- Moving checks earlier in the pipeline can reduce wasted downstream work.
+
+---
+
+## Trade-offs
+
+- Runtime overhead: solver checks add cost per step. The retry/backtrack limits keep the worst case bounded; you can also switch to the pure-Python checker for faster runs.
 
 ---
 
@@ -62,7 +61,7 @@ Reaction-level symbolic constraints are enforced **during** generation, not afte
 
 | Milestone | Target |
 |-----------|--------|
-| **Mid-semester** | Z3 pauses and corrects a **single step** of the diffusion model. |
+| **Mid-semester** | Add step-level correction based on Z3-backed checks. |
 | **End of semester** | Benchmark **1,000 generated reactions** and compare failure rate to a baseline model. |
 
 ---
