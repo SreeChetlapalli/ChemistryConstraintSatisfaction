@@ -8,7 +8,6 @@ Or with pytest when available:  pytest tests/
 
 import sys
 import os
-import math
 import unittest
 import numpy as np
 

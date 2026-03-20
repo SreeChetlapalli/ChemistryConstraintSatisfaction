@@ -52,11 +52,11 @@ class GenerationResult:
     def summary(self) -> str:
         lines = [
             "=" * 60,
-            "  Supervisor — Generation Summary",
+            "  Supervisor - Generation Summary",
             "=" * 60,
             f"  Product     : {self.product.name}",
             f"  Atoms       : {len(self.product.atoms)}",
-            f"  Valid       : {'✓ YES' if self.success else '✗ NO'}",
+            f"  Valid       : {'YES' if self.success else 'NO'}",
             f"  Backtracks  : {self.total_backtracks}",
             f"  Corrections : {self.total_corrections}",
             f"  Wall time   : {self.wall_time_s:.3f}s",
@@ -64,10 +64,10 @@ class GenerationResult:
             "  Constraint check:",
         ]
         if self.success:
-            lines.append("    ✓ All axioms satisfied.")
+            lines.append("    [OK] All axioms satisfied.")
         else:
             for v in self.final_check.violations:
-                lines.append(f"    ✗ {v}")
+                lines.append(f"    [FAIL] {v}")
         lines.append("=" * 60)
         return "\n".join(lines)
 
@@ -192,8 +192,9 @@ class Supervisor:
         while t >= 1:
             step_start = time.perf_counter()
             committed  = False
+            cr = None
 
-            for attempt in range(1, self.max_retries + 2):  # +1 for correction attempt
+            for attempt in range(1, self.max_retries + 2):
                 x_prev, adj_prev = self.model.reverse_step(x_t, adj_t, t, self.T)
                 candidate = self.model.decode(x_prev, adj_prev, name="intermediate")
 
@@ -250,7 +251,7 @@ class Supervisor:
                 # Backtrack
                 total_backtracks += 1
                 if self.verbose:
-                    print(f"  [t={t:3d}] BACKTRACK #{total_backtracks} — violations: {cr.reason}")
+                    print(f"  [t={t:3d}] BACKTRACK #{total_backtracks} -- violations: {cr.reason}")
                 if len(history) > 1:
                     failed_t = t
                     history.pop()               # discard current
@@ -306,8 +307,8 @@ class Supervisor:
         return MolecularState(name="reactants_concat", atoms=atoms)
 
     def _log(self, t: int, action: str, cr: ConstraintResult, elapsed: float) -> None:
-        icon = "✓" if cr.sat else "✗"
+        icon = "[OK]" if cr.sat else "[FAIL]"
         print(f"  [t={t:3d}] {icon} {action:<12} ({elapsed:.1f} ms)")
         if not cr.sat:
             for v in cr.violations:
-                print(f"           ↳ {v}")
+                print(f"           -> {v}")

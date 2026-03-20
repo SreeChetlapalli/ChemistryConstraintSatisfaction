@@ -9,13 +9,12 @@
 | I want to… | Go here |
 |------------|---------|
 | **Run something in 2 minutes** | [Quick start](#quick-start) |
-| **Install and import the package** | [Setup](#setup) · [docs/USAGE.md](docs/USAGE.md) |
+| **Install and import the package** | [Setup](#setup) · [Usage examples](#usage-examples) |
 | **Run tests** | [Tests](#tests) · [CONTRIBUTING.md](CONTRIBUTING.md) |
 | **Try a full demo (CLI)** | `python scripts/demo.py` |
-| **Try Jupyter / Colab** | [notebooks/README.md](notebooks/README.md) |
+| **Try Jupyter / Colab** | [Notebooks](#notebooks) |
 | **See every folder** | [Repository map](#repository-map) |
 | **Change the code** | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| **Doc index** | [docs/README.md](docs/README.md) |
 
 ---
 
@@ -26,6 +25,10 @@
 - [What this project does](#what-this-project-does)
 - [Repository map](#repository-map)
 - [Setup](#setup)
+- [Usage examples](#usage-examples)
+- [Module map](#module-map)
+- [Z3 vs pure Python](#z3-vs-pure-python)
+- [Notebooks](#notebooks)
 - [Tests](#tests)
 - [Scripts](#scripts)
 - [Design notes & trade-offs](#design-notes--trade-offs)
@@ -82,8 +85,6 @@
    python scripts/demo.py
    ```
 
-For copy-paste **Python examples**, see **[docs/USAGE.md](docs/USAGE.md)**.
-
 ---
 
 ## What this project does
@@ -108,10 +109,6 @@ ChemistryConstraintSatisfaction/
 ├── requirements.txt          ← Same runtime deps as pyproject (pip -r friendly)
 ├── run_tests.py              ← Run all tests with stdlib unittest only
 │
-├── docs/
-│   ├── README.md             ← Index of extra documentation
-│   └── USAGE.md              ← Import examples, module map
-│
 ├── src/chemistry_constraint_satisfaction/   ← Installable Python package
 │   ├── __init__.py           ← Package version
 │   ├── constraints/          ← Atoms, molecules, check_reaction / check_intermediate
@@ -122,7 +119,6 @@ ChemistryConstraintSatisfaction/
 │   ├── check_env.py          ← Quick environment sanity check
 │   └── demo.py               ← End-to-end CLI demo + small benchmark
 └── notebooks/
-    ├── README.md             ← How to open demo.ipynb (local / Colab)
     └── demo.ipynb            ← Interactive walkthrough + optional PyTorch training
 ```
 
@@ -153,6 +149,118 @@ conda install -c conda-forge rdkit
 
 ---
 
+## Usage examples
+
+### Install the package (recommended)
+
+From the repository root:
+
+```bash
+pip install -e .
+```
+
+With test tools:
+
+```bash
+pip install -e ".[dev]"
+```
+
+This registers `chemistry_constraint_satisfaction` on your Python path so imports work from any working directory.
+
+### Check a reaction (mass, charge, valency)
+
+```python
+from chemistry_constraint_satisfaction.constraints import (
+    Atom,
+    MolecularState,
+    check_reaction,
+)
+
+reactants = [
+    MolecularState("CH3Br", [
+        Atom("C", 4), Atom("Br", 1),
+        Atom("H", 1), Atom("H", 1), Atom("H", 1),
+    ]),
+    MolecularState("OH-", [
+        Atom("O", 1, formal_charge=-1),
+        Atom("H", 1),
+    ]),
+]
+products = [
+    MolecularState("CH3OH", [
+        Atom("C", 4), Atom("O", 2),
+        Atom("H", 1), Atom("H", 1), Atom("H", 1), Atom("H", 1),
+    ]),
+    MolecularState("Br-", [Atom("Br", 0, formal_charge=-1)]),
+]
+
+result = check_reaction(reactants, products)
+print(result.sat, result.reason)
+```
+
+### Run supervised generation (diffusion + supervisor)
+
+```python
+from chemistry_constraint_satisfaction.diffusion import (
+    MolecularDiffusionModel,
+    Supervisor,
+)
+
+model = MolecularDiffusionModel(hidden_dim=64, seed=42)
+sup = Supervisor(
+    model,
+    reactants=reactants,
+    T=20,
+    verbose=True,
+)
+out = sup.run()
+print(out.success, len(out.product.atoms))
+```
+
+---
+
+## Module map
+
+| Area | Module path | Role |
+|------|-------------|------|
+| Atoms / molecules / checks | `chemistry_constraint_satisfaction.constraints` | `Atom`, `MolecularState`, `check_reaction`, `check_intermediate` |
+| Diffusion model | `chemistry_constraint_satisfaction.diffusion.model` | `MolecularDiffusionModel`, `encode_molecule` |
+| Supervisor loop | `chemistry_constraint_satisfaction.diffusion.supervisor` | `Supervisor`, `GenerationResult` |
+
+---
+
+## Z3 vs pure Python
+
+- If `z3-solver` is installed, `check_reaction(..., prefer_z3=True)` can use the solver.
+- Otherwise the same API falls back to a pure-Python checker (`Z3_AVAILABLE` in `constraints`).
+
+---
+
+## Notebooks
+
+### `demo.ipynb`
+
+End-to-end walkthrough:
+
+1. Install dependencies (Z3, etc.) — Colab-friendly cells at the top.
+2. Constraint checking on example molecules and reactions.
+3. One supervised diffusion run (`Supervisor`).
+4. Optional PyTorch training loop for the denoising GNN and simple benchmarks.
+
+### Open locally
+
+```bash
+# from repo root, with venv activated
+pip install -e ".[dev]"   # or pip install -r requirements.txt + jupyter
+jupyter notebook notebooks/demo.ipynb
+```
+
+### Open in Google Colab
+
+Upload the repo or clone it in a Colab cell, then open `notebooks/demo.ipynb`. Edit the clone URL in the setup cell to match your fork. Enable **Runtime → Change runtime type → GPU** if you want faster training.
+
+---
+
 ## Tests
 
 | Command | When to use |
@@ -177,7 +285,7 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** for details.
 
 - Steps are only committed when they pass the configured checks (or after correction).
 - Z3 adds **runtime cost**; use `prefer_z3=False` or the pure-Python path when you need speed over solver-backed checks.
-- Final validity still depends on the **model**; the supervisor enforces **checked** constraints, not “magic chemistry.”
+- Final validity still depends on the **model**; the supervisor enforces **checked** constraints, not "magic chemistry."
 
 ---
 

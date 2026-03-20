@@ -14,7 +14,7 @@ from typing import Tuple
 import numpy as np
 
 from ..constraints.chemical_axioms import (
-    Atom, MolecularState, MAX_VALENCY,
+    Atom, MolecularState, MAX_VALENCY, CHARGE_VALENCY_DELTA,
 )
 
 
@@ -47,9 +47,12 @@ def feat_to_atom(feat: np.ndarray, bond_row: np.ndarray) -> Atom:
     """Convert a feature vector back into an Atom."""
     elem_idx = int(np.argmax(feat[:NUM_ELEM]))
     element  = ELEMENTS[elem_idx]
-    bonds    = int(round(np.sum(bond_row)))   # sum of bond orders to neighbours
+    bonds    = int(round(np.sum(bond_row)))
     charge   = int(round(feat[NUM_ELEM + 1] * 2.0))
-    implicit_h = max(0, MAX_VALENCY.get(element, 4) - bonds - charge)
+    base_valency = MAX_VALENCY.get(element, 4)
+    delta_map = CHARGE_VALENCY_DELTA.get(element, {})
+    eff_valency = base_valency + delta_map.get(charge, 0)
+    implicit_h = max(0, eff_valency - bonds)
     return Atom(element=element, bonds=bonds, formal_charge=charge,
                 implicit_h=implicit_h)
 
@@ -162,10 +165,11 @@ class MolecularDiffusionModel:
         eps_x   = self._rng.standard_normal(x.shape).astype(np.float32)
         x_noisy = sqrt_ab * x + sqrt_1mab * eps_x
 
-        # With probability (1 - alpha_bar), flip adjacency entries.
-        flip_mask = self._rng.random(adj.shape) < (1.0 - alpha_bar)
+        # With probability (1 - alpha_bar), resample bond orders from {0,1,2,3}.
+        corrupt_mask = self._rng.random(adj.shape) < (1.0 - alpha_bar)
         adj_noisy = adj.copy().astype(np.float32)
-        adj_noisy[flip_mask] = 1.0 - adj_noisy[flip_mask]
+        random_orders = self._rng.integers(0, 4, size=adj.shape).astype(np.float32)
+        adj_noisy[corrupt_mask] = random_orders[corrupt_mask]
         # Keep symmetric
         adj_noisy = np.triu(adj_noisy, 1)
         adj_noisy = adj_noisy + adj_noisy.T
@@ -253,16 +257,16 @@ def encode_molecule(mol: MolecularState) -> Tuple[np.ndarray, np.ndarray]:
     N = len(mol.atoms)
     x = np.stack([atom_to_feat(a) for a in mol.atoms])   # (N, F)
 
-    # Build adjacency from each atom's `bonds` budget.
+    # Build symmetric adjacency from each atom's bond budget.
     adj = np.zeros((N, N), dtype=np.float32)
-    for i, atom in enumerate(mol.atoms):
-        remaining = atom.bonds
-        for j in range(N):
-            if j != i and remaining > 0:
-                bond_order = min(remaining, MAX_VALENCY.get(mol.atoms[j].element, 4))
-                adj[i, j] = bond_order
-                remaining -= bond_order
-    # Ensure a symmetric adjacency matrix with no self-loops.
-    adj = np.maximum(adj, adj.T)
-    np.fill_diagonal(adj, 0.0)
+    remaining = [a.bonds for a in mol.atoms]
+    for i in range(N):
+        for j in range(i + 1, N):
+            if remaining[i] <= 0 or remaining[j] <= 0:
+                continue
+            bond_order = min(remaining[i], remaining[j])
+            adj[i, j] = bond_order
+            adj[j, i] = bond_order
+            remaining[i] -= bond_order
+            remaining[j] -= bond_order
     return x, adj

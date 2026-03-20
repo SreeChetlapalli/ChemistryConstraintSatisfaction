@@ -7,7 +7,8 @@ run for CH3Br + OH- -> CH3OH + Br-.
 Run: python scripts/demo.py
 """
 
-import sys, os, time, random
+import sys, os
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from chemistry_constraint_satisfaction.constraints import (
@@ -18,7 +19,7 @@ from chemistry_constraint_satisfaction.diffusion import (
     MolecularDiffusionModel, Supervisor,
 )
 
-SEP = "─" * 60
+SEP = "-" * 60
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +183,7 @@ def demo_benchmark(n: int = 50):
 
     print(f"\n  Results over {n} reactions  (random GNN weights):")
     print(f"    {'Metric':<30} {'Supervised':>12}  {'Unsupervised':>12}")
-    print(f"    {'─'*30}  {'─'*10}  {'─'*10}")
+    print(f"    {'-'*30}  {'-'*10}  {'-'*10}")
     print(f"    {'Valency validity (per-step)':<30} "
           f"{sup_valency_ok/n*100:>10.1f}%  {raw_valency_ok/n*100:>10.1f}%")
     print(f"    {'Full conservation validity':<30} "
