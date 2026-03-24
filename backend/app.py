@@ -18,8 +18,70 @@ from chemistry_constraint_satisfaction.diffusion import (
     MolecularDiffusionModel, Supervisor,
 )
 from chemistry_constraint_satisfaction.diffusion.model import encode_molecule
+from chemistry_constraint_satisfaction.diffusion.trainer import (
+    build_training_molecules_from_presets,
+    checkpoint_meta,
+    default_checkpoint_path,
+    load_checkpoint_into_numpy,
+    save_checkpoint,
+    train_diffusion_weights,
+)
 
 app = Flask(__name__)
+
+
+def make_trained_diffusion_model(hidden_dim: int, seed: int) -> MolecularDiffusionModel:
+    """NumPy inference model; loads PyTorch-trained weights if checkpoint matches hidden_dim."""
+    m = MolecularDiffusionModel(hidden_dim=hidden_dim, seed=seed)
+    try:
+        load_checkpoint_into_numpy(m, default_checkpoint_path(), map_location="cpu")
+    except Exception:
+        pass
+    return m
+
+
+def get_presets_data():
+    """Static preset molecules and reactions (also used for gradient training data)."""
+    ch3br = {"name": "CH3Br", "atoms": [
+        {"element": "C", "bonds": 4}, {"element": "Br", "bonds": 1},
+        {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1},
+    ]}
+    oh_minus = {"name": "OH-", "atoms": [
+        {"element": "O", "bonds": 1, "formal_charge": -1}, {"element": "H", "bonds": 1},
+    ]}
+    ch3oh = {"name": "CH3OH", "atoms": [
+        {"element": "C", "bonds": 4}, {"element": "O", "bonds": 2},
+        {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1},
+        {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1},
+    ]}
+    br_minus = {"name": "Br-", "atoms": [{"element": "Br", "bonds": 0, "formal_charge": -1}]}
+    br_neutral = {"name": "Br", "atoms": [{"element": "Br", "bonds": 0}]}
+    return {
+        "reactions": [
+            {"name": "SN2: CH3Br + OH- -> CH3OH + Br-",
+             "reactants": [ch3br, oh_minus], "products": [ch3oh, br_minus]},
+            {"name": "Missing product: CH3Br + OH- -> CH3OH",
+             "reactants": [ch3br, oh_minus], "products": [ch3oh]},
+            {"name": "Charge mismatch: CH3Br + OH- -> CH3OH + Br",
+             "reactants": [ch3br, oh_minus], "products": [ch3oh, br_neutral]},
+        ],
+        "molecules": [
+            {"name": "Water (H2O)", "atoms": [
+                {"element": "O", "bonds": 2}, {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1},
+            ]},
+            {"name": "Methane (CH4)", "atoms": [
+                {"element": "C", "bonds": 4},
+                {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1},
+                {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1},
+            ]},
+            {"name": "Ammonium (NH4+)", "atoms": [
+                {"element": "N", "bonds": 4, "formal_charge": 1},
+            ]},
+            {"name": "Invalid: Carbon 5 bonds", "atoms": [
+                {"element": "C", "bonds": 5},
+            ]},
+        ],
+    }
 CORS(app)
 
 
@@ -82,53 +144,14 @@ def info():
         "atomic_masses": ATOMIC_MASS,
         "max_valencies": MAX_VALENCY,
         "atomic_numbers": ATOMIC_NUMBER,
-        "version": "0.3.0",
+        "version": "0.4.0",
+        "diffusion_checkpoint": checkpoint_meta(default_checkpoint_path()),
     })
 
 
 @app.route("/api/presets")
 def presets():
-    ch3br = {"name": "CH3Br", "atoms": [
-        {"element": "C", "bonds": 4}, {"element": "Br", "bonds": 1},
-        {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1},
-    ]}
-    oh_minus = {"name": "OH-", "atoms": [
-        {"element": "O", "bonds": 1, "formal_charge": -1}, {"element": "H", "bonds": 1},
-    ]}
-    ch3oh = {"name": "CH3OH", "atoms": [
-        {"element": "C", "bonds": 4}, {"element": "O", "bonds": 2},
-        {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1},
-        {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1},
-    ]}
-    br_minus = {"name": "Br-", "atoms": [{"element": "Br", "bonds": 0, "formal_charge": -1}]}
-    br_neutral = {"name": "Br", "atoms": [{"element": "Br", "bonds": 0}]}
-
-    return jsonify({
-        "reactions": [
-            {"name": "SN2: CH3Br + OH- -> CH3OH + Br-",
-             "reactants": [ch3br, oh_minus], "products": [ch3oh, br_minus]},
-            {"name": "Missing product: CH3Br + OH- -> CH3OH",
-             "reactants": [ch3br, oh_minus], "products": [ch3oh]},
-            {"name": "Charge mismatch: CH3Br + OH- -> CH3OH + Br",
-             "reactants": [ch3br, oh_minus], "products": [ch3oh, br_neutral]},
-        ],
-        "molecules": [
-            {"name": "Water (H2O)", "atoms": [
-                {"element": "O", "bonds": 2}, {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1},
-            ]},
-            {"name": "Methane (CH4)", "atoms": [
-                {"element": "C", "bonds": 4},
-                {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1},
-                {"element": "H", "bonds": 1}, {"element": "H", "bonds": 1},
-            ]},
-            {"name": "Ammonium (NH4+)", "atoms": [
-                {"element": "N", "bonds": 4, "formal_charge": 1},
-            ]},
-            {"name": "Invalid: Carbon 5 bonds", "atoms": [
-                {"element": "C", "bonds": 5},
-            ]},
-        ],
-    })
+    return jsonify(get_presets_data())
 
 
 @app.route("/api/check-reaction", methods=["POST"])
@@ -169,7 +192,7 @@ def api_run_supervisor():
     data = request.json
     try:
         reactants = [parse_molecule(m) for m in data["reactants"]]
-        model = MolecularDiffusionModel(
+        model = make_trained_diffusion_model(
             hidden_dim=data.get("hidden_dim", 64), seed=data.get("seed", 42),
         )
         sup = Supervisor(
@@ -244,10 +267,12 @@ def api_benchmark():
         sup_val = sup_full = raw_val = raw_full = 0
         runs = []
 
+        hdim = data.get("hidden_dim", 64)
+        Tbm = data.get("T", 10)
         for i in range(n):
-            m = MolecularDiffusionModel(hidden_dim=32, seed=i)
+            m = make_trained_diffusion_model(hidden_dim=hdim, seed=i)
             r = Supervisor(
-                m, reactants, T=10, max_retries=2, max_backtracks=3,
+                m, reactants, T=Tbm, max_retries=2, max_backtracks=3,
                 verbose=False, prefer_z3=False,
             ).run()
             s_val = check_intermediate(r.product).sat
@@ -257,12 +282,12 @@ def api_benchmark():
             if s_full:
                 sup_full += 1
 
-            m2 = MolecularDiffusionModel(hidden_dim=32, seed=i)
+            m2 = make_trained_diffusion_model(hidden_dim=hdim, seed=i)
             init_atoms = [a for mol in reactants for a in mol.atoms]
             x, adj = encode_molecule(MolecularState("init", init_atoms))
-            x_n, adj_n = m2.forward_noisy(x, adj, t=10, T=10)
-            for t in range(10, 0, -1):
-                x_n, adj_n = m2.reverse_step(x_n, adj_n, t=t, T=10)
+            x_n, adj_n = m2.forward_noisy(x, adj, t=Tbm, T=Tbm)
+            for t in range(Tbm, 0, -1):
+                x_n, adj_n = m2.reverse_step(x_n, adj_n, t=t, T=Tbm)
             raw_prod = m2.decode(x_n, adj_n, name="raw")
             u_val = check_intermediate(raw_prod).sat
             u_full = check_reaction(reactants, [raw_prod], prefer_z3=False).sat
@@ -310,15 +335,16 @@ def api_train():
         for gen in range(generations):
             scores = []
             for seed in seeds:
-                m = MolecularDiffusionModel(hidden_dim=hidden_dim, seed=seed)
+                m = make_trained_diffusion_model(hidden_dim=hidden_dim, seed=seed)
                 r = Supervisor(
-                    m, reactants, T=T, max_retries=2, max_backtracks=3,
+                    m, reactants, T=T, max_retries=3, max_backtracks=5,
                     verbose=False, prefer_z3=False,
                 ).run()
                 val_ok = 1 if check_intermediate(r.product).sat else 0
                 full_ok = 1 if r.success else 0
-                bt_penalty = r.total_backtracks * 0.05
-                score = val_ok * 0.6 + full_ok * 0.4 - bt_penalty
+                bt_penalty = r.total_backtracks * 0.02
+                corr_penalty = r.total_corrections * 0.01
+                score = val_ok * 0.4 + full_ok * 0.5 + 0.1 - bt_penalty - corr_penalty
                 scores.append((seed, score, val_ok, full_ok, r.total_backtracks))
 
             scores.sort(key=lambda x: -x[1])
@@ -339,11 +365,11 @@ def api_train():
 
             top_k = max(2, len(seeds) // 4)
             top_seeds = [s[0] for s in scores[:top_k]]
-            rng = random.Random(gen)
+            rng = random.Random(gen * 1000 + best[0])
             new_seeds = list(top_seeds)
             while len(new_seeds) < pop_size:
                 parent = rng.choice(top_seeds)
-                mutated = parent + rng.randint(-50, 50)
+                mutated = parent + rng.randint(-200, 200)
                 if mutated < 0:
                     mutated = rng.randint(0, 9999)
                 new_seeds.append(mutated)
@@ -365,6 +391,57 @@ def api_train():
         return jsonify({"error": str(e)}), 400
 
 
+@app.route("/api/train-weights", methods=["POST"])
+def api_train_weights():
+    """PyTorch Adam training: denoising objective on preset molecules, saves checkpoint for NumPy inference."""
+    data = request.json or {}
+    try:
+        hidden_dim = min(max(int(data.get("hidden_dim", 64)), 8), 128)
+        T = min(max(int(data.get("T", 20)), 5), 50)
+        epochs = min(max(int(data.get("epochs", 40)), 5), 200)
+        lr = float(data.get("lr", 1e-3))
+        steps_per_epoch = min(max(int(data.get("steps_per_epoch", 80)), 20), 300)
+        seed = int(data.get("seed", 42))
+
+        mols = build_training_molecules_from_presets(get_presets_data())
+        if not mols:
+            return jsonify({"error": "No training molecules"}), 400
+
+        t0 = time.perf_counter()
+        loss_history, net = train_diffusion_weights(
+            mols,
+            hidden_dim=hidden_dim,
+            T=T,
+            epochs=epochs,
+            lr=lr,
+            steps_per_epoch=steps_per_epoch,
+            seed=seed,
+        )
+        wall_s = round(time.perf_counter() - t0, 3)
+        path = default_checkpoint_path()
+        save_checkpoint(
+            net,
+            path,
+            {
+                "epochs": epochs,
+                "n_molecules": len(mols),
+                "lr": lr,
+                "T": T,
+                "training_wall_s": wall_s,
+            },
+        )
+        return jsonify({
+            "loss_history": [round(x, 6) for x in loss_history],
+            "checkpoint_path": path,
+            "n_molecules": len(mols),
+            "hidden_dim": hidden_dim,
+            "final_loss": round(loss_history[-1], 6) if loss_history else None,
+            "training_wall_s": wall_s,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
 @app.route("/api/monte-carlo", methods=["POST"])
 def api_monte_carlo():
     data = request.json
@@ -381,7 +458,7 @@ def api_monte_carlo():
         lip_pass = 0
 
         for seed in range(n):
-            m = MolecularDiffusionModel(hidden_dim=hidden_dim, seed=seed)
+            m = make_trained_diffusion_model(hidden_dim=hidden_dim, seed=seed)
             r = Supervisor(
                 m, reactants, T=T, max_retries=2, max_backtracks=3,
                 verbose=False, prefer_z3=False,
@@ -452,7 +529,7 @@ def api_pathway():
             else:
                 return jsonify({"error": f"Step {i} has no reactants and no previous products"}), 400
 
-            m = MolecularDiffusionModel(hidden_dim=hidden_dim, seed=seed + i)
+            m = make_trained_diffusion_model(hidden_dim=hidden_dim, seed=seed + i)
             sup = Supervisor(
                 m, reactants, T=T, max_retries=2, max_backtracks=3,
                 verbose=False, prefer_z3=False,

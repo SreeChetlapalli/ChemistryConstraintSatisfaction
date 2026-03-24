@@ -20,7 +20,9 @@ export default function BenchmarkPage({ presets }) {
     if (!reactants) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const data = await api.runBenchmark({ reactants, n });
+      const data = await api.runBenchmark({
+        reactants, n, hidden_dim: 64, T: 10,
+      });
       setResult(data);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -125,8 +127,9 @@ export default function BenchmarkPage({ presets }) {
           </table>
 
           <p className="text-[13px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
-            These benchmarks use random GNN weights. Trained models produce higher
-            conservation rates while the supervisor provides an additional safety layer.
+            If you ran Train weights on the Training page (hidden dim 64), the server loads that checkpoint
+            here automatically. Otherwise weights are freshly random per seed. The supervisor still adds a
+            safety layer on top of whatever the network outputs.
           </p>
         </>
       )}

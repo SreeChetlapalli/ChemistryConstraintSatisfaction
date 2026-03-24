@@ -30,6 +30,12 @@ export default function App() {
     api.getPresets().then(setPresets).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const refresh = () => api.getInfo().then(setInfo).catch(() => {});
+    window.addEventListener("chemcsp-reload-info", refresh);
+    return () => window.removeEventListener("chemcsp-reload-info", refresh);
+  }, []);
+
   const renderPage = () => {
     switch (page) {
       case "overview":
@@ -80,6 +86,11 @@ export default function App() {
           {info && (
             <div className="flex items-center gap-4 text-[13px] text-neutral-500">
               <span>v{info.version}</span>
+              {info.diffusion_checkpoint?.hidden_dim != null && (
+                <span className="text-green-500/90" title="Trained GNN weights loaded on the server">
+                  GNN h{info.diffusion_checkpoint.hidden_dim}
+                </span>
+              )}
               <span className="flex items-center gap-1.5">
                 <span className={`w-1.5 h-1.5 rounded-full ${info.z3_available ? "bg-green-500" : "bg-yellow-500"}`} />
                 {info.z3_available ? "Z3" : "Python"}

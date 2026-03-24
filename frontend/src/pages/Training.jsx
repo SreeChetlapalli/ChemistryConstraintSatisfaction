@@ -4,12 +4,18 @@ import ReactionPicker from "../components/ReactionPicker";
 
 export default function TrainingPage({ presets }) {
   const [config, setConfig] = useState({
-    population: 12, generations: 8, hidden_dim: 32, T: 10,
+    population: 12, generations: 8, hidden_dim: 64, T: 10,
+  });
+  const [gradConfig, setGradConfig] = useState({
+    epochs: 40, lr: 0.001, hidden_dim: 64, T: 20, steps_per_epoch: 80, seed: 42,
   });
   const [reaction, setReaction] = useState(null);
   const [result, setResult] = useState(null);
+  const [gradResult, setGradResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [gradLoading, setGradLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [gradError, setGradError] = useState(null);
 
   useEffect(() => {
     if (presets && !reaction) {
@@ -18,6 +24,17 @@ export default function TrainingPage({ presets }) {
   }, [presets, reaction]);
 
   const set = (k, v) => setConfig((p) => ({ ...p, [k]: v }));
+  const setG = (k, v) => setGradConfig((p) => ({ ...p, [k]: v }));
+
+  const runGrad = async () => {
+    setGradLoading(true); setGradError(null); setGradResult(null);
+    try {
+      const data = await api.trainWeights({ ...gradConfig });
+      setGradResult(data);
+      window.dispatchEvent(new CustomEvent("chemcsp-reload-info"));
+    } catch (e) { setGradError(e.message); }
+    finally { setGradLoading(false); }
+  };
 
   const run = async () => {
     const reactants = reaction?.reactants || presets?.reactions[0]?.reactants;
@@ -34,14 +51,72 @@ export default function TrainingPage({ presets }) {
     <div className="max-w-[1200px] mx-auto px-6 py-10">
       <h1 className="text-[28px] font-semibold text-white mb-2">Model Training</h1>
       <p className="text-[15px] mb-3" style={{ color: "var(--text-secondary)" }}>
-        Find the best model seeds through evolutionary selection over multiple generations.
+        Train the GNN weights with gradient descent, or search for better random seeds without changing weights.
       </p>
-      <p className="text-[13px] mb-8 max-w-[750px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
-        This doesn't use gradient descent. Instead it spawns a population of models with different
-        random seeds, has each one generate a molecule, and scores them by how many constraint
-        violations they produce. The best performers survive and their seeds carry over to the next
-        generation. After a few rounds the population zeros in on seeds that consistently produce
-        valid molecules.
+      <p className="text-[13px] mb-10 max-w-[750px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+        The generative core is a graph neural network. Use <span className="text-white">Train weights</span> to run
+        PyTorch Adam on a denoising objective over preset molecules and reaction products. The checkpoint is saved
+        under <span className="font-mono text-neutral-400">checkpoints/diffusion_weights.pt</span> and is loaded
+        automatically for Supervisor, Benchmark, Simulation, and Pathways when <span className="font-mono">hidden_dim</span> matches.
+        Evolutionary training below only mutates RNG seeds and does not update weights.
+      </p>
+
+      <div className="mb-12 pb-10 border-b" style={{ borderColor: "var(--border)" }}>
+        <h2 className="text-[18px] font-medium text-white mb-2">Train GNN weights (gradient descent)</h2>
+        <p className="text-[13px] mb-6 max-w-[700px]" style={{ color: "var(--text-muted)" }}>
+          Uses every preset molecule and reaction product as training graphs. After training, refresh the app header
+          or reload the page to see the GNN badge.
+        </p>
+        <div className="flex items-end gap-4 flex-wrap mb-4">
+          {[
+            { key: "epochs", label: "Epochs", min: 5, max: 200 },
+            { key: "lr", label: "Learning rate", min: 0.0001, max: 0.05, step: 0.0001 },
+            { key: "hidden_dim", label: "Hidden dim", min: 8, max: 128 },
+            { key: "T", label: "Diffusion T", min: 5, max: 50 },
+            { key: "steps_per_epoch", label: "Steps / epoch", min: 20, max: 300 },
+            { key: "seed", label: "Seed", min: 0, max: 99999 },
+          ].map(({ key, label, min, max, step }) => (
+            <div key={key}>
+              <label className="text-[13px] block mb-1.5" style={{ color: "var(--text-muted)" }}>{label}</label>
+              <input
+                type="number"
+                value={gradConfig[key]}
+                onChange={(e) => setG(key, Number(e.target.value))}
+                min={min} max={max} step={step || 1}
+                className="w-28 rounded-md px-3 py-2 text-[14px] font-mono text-white focus:outline-none focus:ring-1 focus:ring-neutral-500"
+                style={{ background: "var(--bg-input)", border: "1px solid var(--border)" }}
+              />
+            </div>
+          ))}
+          <button
+            onClick={runGrad}
+            disabled={gradLoading}
+            className="px-5 py-2 bg-white text-black text-[14px] font-medium rounded-md hover:bg-neutral-200 disabled:opacity-30 transition-colors"
+          >
+            {gradLoading ? "Training…" : "Train weights"}
+          </button>
+        </div>
+        {gradError && <p className="text-red-400 text-[14px] mb-4">{gradError}</p>}
+        {gradLoading && (
+          <p className="text-[13px] mb-4 animate-pulse-slow" style={{ color: "var(--text-muted)" }}>
+            Running PyTorch on preset molecules (may take a minute)…
+          </p>
+        )}
+        {gradResult && (
+          <div className="space-y-4">
+            <p className="text-[14px]" style={{ color: "var(--text-secondary)" }}>
+              Saved <span className="font-mono text-white">{gradResult.checkpoint_path}</span>
+              {" "}({gradResult.n_molecules} graphs, final loss {gradResult.final_loss}, {gradResult.training_wall_s}s)
+            </p>
+            <LossCurve losses={gradResult.loss_history} />
+          </div>
+        )}
+      </div>
+
+      <h2 className="text-[18px] font-medium text-white mb-2">Evolutionary seed search (no weight updates)</h2>
+      <p className="text-[13px] mb-6 max-w-[700px]" style={{ color: "var(--text-muted)" }}>
+        Spawns models with different random seeds, scores them through the supervised pipeline, and keeps the best seeds.
+        This does not change network weights; use Train weights above for that.
       </p>
 
       {presets && <ReactionPicker presets={presets} value={reaction} onChange={setReaction} />}
@@ -146,7 +221,21 @@ export default function TrainingPage({ presets }) {
   );
 }
 
-function Curve({ history, metric, label, color, max }) {
+function LossCurve({ losses }) {
+  if (!losses?.length) return null;
+  const history = losses.map((loss, generation) => ({ generation, loss }));
+  return (
+    <Curve
+      history={history}
+      metric="loss"
+      label="Training loss (per epoch)"
+      color="#22c55e"
+      xKey="generation"
+    />
+  );
+}
+
+function Curve({ history, metric, label, color, max, xKey = "generation" }) {
   if (!history?.length) return null;
   const pad = { top: 16, right: 12, bottom: 24, left: 40 };
   const w = 480, h = 160;
@@ -155,7 +244,7 @@ function Curve({ history, metric, label, color, max }) {
 
   const vals = history.map((h) => h[metric]);
   const minV = Math.min(...vals);
-  const maxV = max !== undefined ? max : Math.max(...vals);
+  const maxV = max !== undefined ? max : Math.max(...vals, minV + 1e-6);
   const range = maxV - minV || 1;
 
   const pts = vals.map((v, i) => {
@@ -187,7 +276,8 @@ function Curve({ history, metric, label, color, max }) {
         {vals.map((v, i) => {
           const x = pad.left + (i / Math.max(1, vals.length - 1)) * iw;
           const y = pad.top + ih - ((v - minV) / range) * ih;
-          return <circle key={i} cx={x} cy={y} r={2.5} fill={color}><title>Gen {i}: {v}</title></circle>;
+          const row = history[i];
+          return <circle key={i} cx={x} cy={y} r={2.5} fill={color}><title>{xKey} {row[xKey] ?? i}: {v}</title></circle>;
         })}
       </svg>
     </div>

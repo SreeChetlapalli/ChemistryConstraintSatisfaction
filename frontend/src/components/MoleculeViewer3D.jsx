@@ -165,14 +165,26 @@ function Bond({ start, end, order }) {
   );
 }
 
+function hasAnyBond(adj) {
+  if (!adj || adj.length === 0) return false;
+  for (let i = 0; i < adj.length; i++) {
+    if (!adj[i]) continue;
+    for (let j = 0; j < adj[i].length; j++) {
+      if (adj[i][j] > 0) return true;
+    }
+  }
+  return false;
+}
+
 function MoleculeScene({ atoms, adjacency, autoRotate }) {
   const [hovered, setHovered] = useState(null);
   const groupRef = useRef();
 
-  const adj = useMemo(
-    () => adjacency || buildAdj(atoms),
-    [atoms, adjacency],
-  );
+  const adj = useMemo(() => {
+    if (adjacency && adjacency.length === atoms.length && hasAnyBond(adjacency))
+      return adjacency;
+    return buildAdj(atoms);
+  }, [atoms, adjacency]);
   const positions = useMemo(
     () => layout3D(atoms, adj),
     [atoms, adj],

@@ -102,6 +102,104 @@ def _fix_valency(mol: MolecularState) -> MolecularState:
     return MolecularState(atoms=fixed_atoms, name=mol.name)
 
 
+def _fix_composition(
+    mol: MolecularState,
+    target_elements: List[str],
+) -> MolecularState:
+    """
+    Relabel decoded atoms so the element multiset matches the reactants.
+
+    The diffusion model keeps atom count N fixed but can decode the wrong
+    elements. This greedily assigns target elements to atoms, preferring
+    to keep atoms that already match.
+    """
+    from ..constraints.chemical_axioms import MAX_VALENCY, CHARGE_VALENCY_DELTA
+
+    if len(mol.atoms) != len(target_elements):
+        return mol
+
+    remaining = list(target_elements)
+
+    # First pass: mark atoms that already have a matching target element
+    matched = [False] * len(mol.atoms)
+    for i, atom in enumerate(mol.atoms):
+        if atom.element in remaining:
+            remaining.remove(atom.element)
+            matched[i] = True
+
+    # Second pass: relabel unmatched atoms with leftover target elements
+    fixed = []
+    for i, atom in enumerate(mol.atoms):
+        if matched[i]:
+            fixed.append(atom)
+        elif remaining:
+            new_elem = remaining.pop(0)
+            base_val = MAX_VALENCY.get(new_elem, 4)
+            delta_map = CHARGE_VALENCY_DELTA.get(new_elem, {})
+            eff_val = base_val + delta_map.get(atom.formal_charge, 0)
+            new_bonds = min(atom.bonds, eff_val)
+            new_impl_h = max(0, eff_val - new_bonds)
+            fixed.append(dataclasses.replace(
+                atom, element=new_elem, bonds=new_bonds,
+                implicit_h=new_impl_h,
+            ))
+        else:
+            fixed.append(atom)
+
+    return MolecularState(atoms=fixed, name=mol.name)
+
+
+def _fix_charge(
+    mol: MolecularState,
+    target_charge: int,
+) -> MolecularState:
+    """
+    Adjust formal charges so total charge matches the target.
+    Distributes corrections across atoms that commonly carry charge
+    (N, O, S, P, halogens), zeroing out spurious charges first.
+    """
+    current = mol.total_charge()
+    delta = target_charge - current
+    if delta == 0:
+        return mol
+
+    from ..constraints.chemical_axioms import MAX_VALENCY, CHARGE_VALENCY_DELTA
+    atoms = [dataclasses.replace(a) for a in mol.atoms]
+
+    # First: zero out any charges that don't belong on their element
+    chargeable = {"N", "O", "S", "P", "Cl", "Br", "I", "F"}
+    for i, atom in enumerate(atoms):
+        if delta == 0:
+            break
+        if atom.formal_charge != 0 and atom.element not in chargeable:
+            old_charge = atom.formal_charge
+            atoms[i] = dataclasses.replace(atom, formal_charge=0)
+            delta += old_charge
+
+    # Second: distribute remaining delta across chargeable atoms
+    for i, atom in enumerate(atoms):
+        if delta == 0:
+            break
+        if atom.element in chargeable:
+            step = 1 if delta > 0 else -1
+            new_charge = atom.formal_charge + step
+            if abs(new_charge) <= 2:
+                atoms[i] = dataclasses.replace(atom, formal_charge=new_charge)
+                delta -= step
+
+    # Last resort: put remaining delta on any atom
+    for i, atom in enumerate(atoms):
+        if delta == 0:
+            break
+        step = 1 if delta > 0 else -1
+        new_charge = atom.formal_charge + step
+        if abs(new_charge) <= 3:
+            atoms[i] = dataclasses.replace(atom, formal_charge=new_charge)
+            delta -= step
+
+    return MolecularState(atoms=atoms, name=mol.name)
+
+
 def _fix_mass(
     mol: MolecularState,
     target_mass: float,
@@ -109,28 +207,32 @@ def _fix_mass(
 ) -> MolecularState:
     """
     Adjust implicit hydrogen so total mass moves toward the target.
+    Uses multiple passes to converge.
     """
     from ..constraints.chemical_axioms import ATOMIC_MASS
-    current = mol.total_mass()
-    delta   = target_mass - current
-    h_mass  = ATOMIC_MASS["H"]
+    h_mass = ATOMIC_MASS["H"]
 
-    if abs(delta) <= tolerance:
-        return mol
-
-    # Distribute hydrogen adjustments across atoms
     atoms = [dataclasses.replace(a) for a in mol.atoms]
-    for atom in atoms:
+
+    for _pass in range(3):
+        current = sum(ATOMIC_MASS.get(a.element, 0) + a.implicit_h * h_mass for a in atoms)
+        delta = target_mass - current
         if abs(delta) <= tolerance:
             break
-        if delta > 0:  # need more mass → add H
-            add = min(int(delta / h_mass), atom.effective_valency - atom.total_bonds)
-            atom.implicit_h += add
-            delta -= add * h_mass
-        else:           # need less mass → remove H
-            remove = min(int(-delta / h_mass), atom.implicit_h)
-            atom.implicit_h -= remove
-            delta += remove * h_mass
+        for atom in atoms:
+            if abs(delta) <= tolerance:
+                break
+            if delta > 0:
+                space = atom.effective_valency - atom.total_bonds
+                add = min(round(delta / h_mass + 0.49), space)
+                if add > 0:
+                    atom.implicit_h += add
+                    delta -= add * h_mass
+            else:
+                remove = min(round(-delta / h_mass + 0.49), atom.implicit_h)
+                if remove > 0:
+                    atom.implicit_h -= remove
+                    delta += remove * h_mass
 
     return MolecularState(atoms=atoms, name=mol.name)
 
@@ -171,8 +273,9 @@ class Supervisor:
         self.verbose        = verbose
         self.prefer_z3      = prefer_z3
 
-        # Compute target mass and charge from reactants
         self._target_mass   = sum(m.total_mass()   for m in reactants)
+        self._target_charge = sum(m.total_charge() for m in reactants)
+        self._target_elements = [a.element for m in reactants for a in m.atoms]
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -237,10 +340,13 @@ class Supervisor:
                         self._log(t, action, cr, elapsed)
                     break
                 else:
-                    # Try a lightweight correction before next re-sample
+                    # Try corrections before next re-sample
                     if attempt <= self.max_retries:
+                        if t == 1:
+                            candidate = _fix_composition(candidate, self._target_elements)
                         candidate = _fix_valency(candidate)
                         if t == 1:
+                            candidate = _fix_charge(candidate, self._target_charge)
                             candidate = _fix_mass(candidate, self._target_mass)
                         cr2 = (
                             check_reaction(self.reactants, [candidate], prefer_z3=self.prefer_z3)
@@ -288,8 +394,15 @@ class Supervisor:
 
             t -= 1
 
-        # ---- Decode final state -------------------------------------
+        # ---- Decode final state and apply composition corrections ------
         product = self.model.decode(x_t, adj_t, name="product")
+        product = _fix_composition(product, self._target_elements)
+        product = _fix_valency(product)
+        product = _fix_charge(product, self._target_charge)
+        product = _fix_mass(product, self._target_mass)
+
+        # Re-encode after fixes so the adjacency reflects corrections
+        x_t, adj_t = encode_molecule(product)
 
         # ---- Final conservation check --------------------------------
         final_check = check_reaction(
