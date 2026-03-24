@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useMemo } from "react";
 import { api } from "../api";
 import MoleculeViewer3D from "../components/MoleculeViewer3D";
+import Molecule3DModal from "../components/Molecule3DModal";
 import { ELEMENTS, ELEMENT_MAP, GROUP_COLORS } from "../data/elements";
 import {
   MousePointer2,
@@ -12,6 +13,7 @@ import {
   CheckCircle2,
   XCircle,
   Search,
+  Maximize2,
 } from "lucide-react";
 
 const COMMON_ELEMENTS = ["H", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I"];
@@ -41,6 +43,7 @@ export default function MoleculeLab({ presets }) {
 
   const [checkResult, setCheckResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [show3DModal, setShow3DModal] = useState(false);
 
   const svgRef = useRef(null);
 
@@ -75,6 +78,33 @@ export default function MoleculeLab({ presets }) {
       bondCount: bonds.length,
     };
   }, [atoms, bonds, bondTotals]);
+
+  const viewerAtoms = useMemo(() =>
+    atoms.map((a) => ({
+      element: a.element,
+      bonds: bondTotals[a.id] || 0,
+      formal_charge: a.charge,
+      implicit_h: 0,
+      effective_valency: effValency(a.element, a.charge),
+      total_bonds: bondTotals[a.id] || 0,
+    })),
+  [atoms, bondTotals]);
+
+  const viewerAdj = useMemo(() => {
+    const n = atoms.length;
+    if (n === 0) return [];
+    const idxOf = {};
+    atoms.forEach((a, i) => { idxOf[a.id] = i; });
+    const m = Array.from({ length: n }, () => new Float32Array(n));
+    bonds.forEach((b) => {
+      const fi = idxOf[b.from], ti = idxOf[b.to];
+      if (fi !== undefined && ti !== undefined) {
+        m[fi][ti] = b.order;
+        m[ti][fi] = b.order;
+      }
+    });
+    return m;
+  }, [atoms, bonds]);
 
   const svgPt = useCallback(
     (e) => {
@@ -283,6 +313,11 @@ export default function MoleculeLab({ presets }) {
           <p className="text-[15px]" style={{ color: "var(--text-secondary)" }}>
             Build molecules interactively with real-time constraint validation.
           </p>
+          <p className="text-[13px] mt-1 max-w-[700px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+            Pick elements, draw bonds, and adjust charges. The constraint engine runs in real time
+            so you can see right away if something is over-bonded. Click the 3D preview on the
+            right to open a bigger interactive view.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           {presets && (
@@ -384,7 +419,7 @@ export default function MoleculeLab({ presets }) {
                       borderColor: selElem === el.sym && tool === "atom" ? gc : "transparent",
                       borderWidth: "1px",
                     }}
-                    title={`${el.name} (${el.sym}) — valency ${el.maxVal}`}
+                    title={`${el.name} (${el.sym}) - valency ${el.maxVal}`}
                   >
                     {el.sym}
                   </button>
@@ -688,28 +723,38 @@ export default function MoleculeLab({ presets }) {
           </svg>
         </div>
 
-        {/* 3D Preview */}
-        <div className="w-64 shrink-0 flex flex-col gap-3">
-          <div className="bg-[#171717] border border-[#262626] rounded-lg overflow-hidden flex-1">
+        {/* 3D Preview + Right panel */}
+        <div className="w-64 shrink-0 overflow-y-auto space-y-3">
+          <div className="bg-[#171717] border border-[#262626] rounded-lg overflow-hidden">
             <div className="px-3 pt-3 pb-1 flex items-center justify-between">
               <span className="text-[12px] text-neutral-500">
                 3D Preview
               </span>
-              <span className="text-[9px] text-neutral-600">drag to rotate</span>
+              {atoms.length > 0 ? (
+                <button
+                  onClick={() => setShow3DModal(true)}
+                  className="flex items-center gap-1 text-[10px] text-neutral-500 hover:text-white transition-colors"
+                  title="Expand to full view"
+                >
+                  <Maximize2 size={11} /> Expand
+                </button>
+              ) : (
+                <span className="text-[9px] text-neutral-600">drag to rotate</span>
+              )}
             </div>
             {atoms.length > 0 ? (
-              <MoleculeViewer3D
-                atoms={atoms.map((a) => ({
-                  element: a.element,
-                  bonds: bondTotals[a.id] || 0,
-                  formal_charge: a.charge,
-                  implicit_h: 0,
-                  effective_valency: effValency(a.element, a.charge),
-                  total_bonds: bondTotals[a.id] || 0,
-                }))}
-                height={240}
-                autoRotate={true}
-              />
+              <div
+                className="cursor-pointer"
+                onClick={() => setShow3DModal(true)}
+                title="Click to enlarge"
+              >
+                <MoleculeViewer3D
+                  atoms={viewerAtoms}
+                  adjacency={viewerAdj}
+                  height={240}
+                  autoRotate={true}
+                />
+              </div>
             ) : (
               <div className="h-[240px] flex items-center justify-center text-neutral-700 text-xs">
                 Build a molecule to preview
@@ -717,8 +762,6 @@ export default function MoleculeLab({ presets }) {
             )}
           </div>
 
-        {/* Right panel */}
-        <div className="space-y-3">
           <div className="bg-[#171717] border border-[#262626] rounded-lg p-3">
             <span className="text-[12px] text-neutral-500 block mb-2">
               Properties
@@ -814,6 +857,14 @@ export default function MoleculeLab({ presets }) {
                 <span>Mass: {checkResult.total_mass?.toFixed(2)} u</span>
                 <span>{checkResult.elapsed_ms}ms</span>
               </div>
+              {checkResult.lipinski && (
+                <div className="mt-1.5 flex gap-2 text-[10px]">
+                  <span className={checkResult.lipinski.passes_ro5 ? "text-green-400" : "text-yellow-400"}>
+                    {checkResult.lipinski.passes_ro5 ? "Passes" : "Fails"} Ro5
+                  </span>
+                  <span className="text-neutral-500">HBD {checkResult.lipinski.hbd} HBA {checkResult.lipinski.hba}</span>
+                </div>
+              )}
             </div>
           )}
           {checkResult?.error && (
@@ -822,8 +873,15 @@ export default function MoleculeLab({ presets }) {
             </div>
           )}
         </div>
-        </div>
       </div>
+
+      {show3DModal && atoms.length > 0 && (
+        <Molecule3DModal
+          atoms={viewerAtoms}
+          adjacency={viewerAdj}
+          onClose={() => setShow3DModal(false)}
+        />
+      )}
     </div>
   );
 }

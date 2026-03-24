@@ -24,4 +24,8 @@ export const api = {
     fetchJSON("/benchmark", { method: "POST", body: JSON.stringify(body) }),
   trainModel: (body) =>
     fetchJSON("/train", { method: "POST", body: JSON.stringify(body) }),
+  runMonteCarlo: (body) =>
+    fetchJSON("/monte-carlo", { method: "POST", body: JSON.stringify(body) }),
+  runPathway: (body) =>
+    fetchJSON("/pathway", { method: "POST", body: JSON.stringify(body) }),
 };

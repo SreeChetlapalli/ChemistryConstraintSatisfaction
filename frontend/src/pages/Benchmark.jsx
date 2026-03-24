@@ -1,17 +1,26 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api } from "../api";
+import ReactionPicker from "../components/ReactionPicker";
 
 export default function BenchmarkPage({ presets }) {
   const [n, setN] = useState(20);
+  const [reaction, setReaction] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  useEffect(() => {
+    if (presets && !reaction) {
+      setReaction({ reactants: presets.reactions[0].reactants, label: presets.reactions[0].name });
+    }
+  }, [presets, reaction]);
+
   const run = async () => {
-    if (!presets) return;
+    const reactants = reaction?.reactants || presets?.reactions[0]?.reactants;
+    if (!reactants) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const data = await api.runBenchmark({ reactants: presets.reactions[0].reactants, n });
+      const data = await api.runBenchmark({ reactants, n });
       setResult(data);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -24,9 +33,17 @@ export default function BenchmarkPage({ presets }) {
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-10">
       <h1 className="text-[28px] font-semibold text-white mb-2">Benchmark</h1>
-      <p className="text-[15px] mb-8" style={{ color: "var(--text-secondary)" }}>
-        Quantify the impact of constraint supervision across independent trials.
+      <p className="text-[15px] mb-3" style={{ color: "var(--text-secondary)" }}>
+        See how much the constraint supervisor actually helps by comparing it against raw generation.
       </p>
+      <p className="text-[13px] mb-8 max-w-[750px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+        Each trial generates the same molecule twice: once with the constraint supervisor turned on
+        and once without it. The results go side by side so you can compare valency correctness,
+        charge conservation, bond validity, and mass accuracy. The summary stats at the top show
+        the overall difference across all trials.
+      </p>
+
+      {presets && <ReactionPicker presets={presets} value={reaction} onChange={setReaction} />}
 
       <div className="flex items-end gap-4 mb-8 pb-8 border-b" style={{ borderColor: "var(--border)" }}>
         <div>

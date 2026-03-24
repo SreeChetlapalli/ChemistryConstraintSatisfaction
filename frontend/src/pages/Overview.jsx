@@ -35,11 +35,13 @@ export default function Overview({ info, onNavigate }) {
         <h2 className="text-[22px] font-semibold text-white mb-8">Tools</h2>
         <div className="space-y-0 border-t" style={{ borderColor: "var(--border)" }}>
           {[
-            { id: "lab", label: "Molecule Lab", desc: "Build molecules interactively with real-time valency validation and 3D preview." },
-            { id: "checker", label: "Constraint Checker", desc: "Type reactions as text or select presets. Verify all three conservation axioms." },
-            { id: "supervisor", label: "Supervisor", desc: "Run the constrained diffusion loop. Step through generation with a timeline scrubber." },
-            { id: "training", label: "Model Training", desc: "Evolutionary optimization across model seeds. Track fitness over generations." },
-            { id: "benchmark", label: "Benchmark", desc: "Compare supervised vs unsupervised generation across independent trials." },
+            { id: "lab", label: "Molecule Lab", desc: "Build molecules by hand with live valency checks and a 3D preview." },
+            { id: "checker", label: "Constraint Checker", desc: "Type a reaction or pick a preset and check it against the conservation rules." },
+            { id: "supervisor", label: "Supervisor", desc: "Run the diffusion loop and scrub through each generation step." },
+            { id: "training", label: "Model Training", desc: "Evolve model seeds over generations and track which ones produce valid molecules." },
+            { id: "benchmark", label: "Benchmark", desc: "Run the same reaction with and without the constraint supervisor and compare." },
+            { id: "simulation", label: "Simulation", desc: "Generate hundreds of molecules at once and look at the results statistically." },
+            { id: "pathways", label: "Pathways", desc: "Line up multiple reactions where each step's product becomes the next step's input." },
           ].map(({ id, label, desc }) => (
             <button
               key={id}
@@ -81,7 +83,7 @@ export default function Overview({ info, onNavigate }) {
         <div>
           <h3 className="text-[15px] font-medium text-white mb-3">Supervisor Loop</h3>
           <p className="text-[14px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-            Per-step validation with targeted corrections — valency reduction,
+            Per-step validation with targeted corrections: valency reduction,
             hydrogen adjustment, or full state backtracking.
           </p>
         </div>
@@ -104,7 +106,7 @@ export default function Overview({ info, onNavigate }) {
                 key={el.sym}
                 className="w-[28px] h-[28px] rounded-[3px] flex items-center justify-center text-[9px] font-medium"
                 style={{ background: gc + "14", color: gc }}
-                title={`${el.name} — Z=${el.z}, ${el.mass}u, valency ${el.maxVal}`}
+                title={`${el.name} - Z=${el.z}, ${el.mass}u, valency ${el.maxVal}`}
               >
                 {el.sym}
               </div>

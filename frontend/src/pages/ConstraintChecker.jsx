@@ -1,89 +1,15 @@
 import { useState } from "react";
 import { api } from "../api";
 import MoleculeViewer3D from "../components/MoleculeViewer3D";
-import { ELEMENTS as ALL_ELEMENTS, ELEMENT_MAP } from "../data/elements";
-import { Plus, Trash2 } from "lucide-react";
+import Molecule3DModal from "../components/Molecule3DModal";
+import { ELEMENTS as ALL_ELEMENTS } from "../data/elements";
+import { Plus, Trash2, Maximize2 } from "lucide-react";
+import { parseFormula, parseEquation } from "../utils/chemParser";
+import LipinskiBadge from "../components/LipinskiBadge";
 
 const ELEMENTS = ALL_ELEMENTS.map((e) => e.sym);
 
 const MAX_VAL = Object.fromEntries(ALL_ELEMENTS.map((e) => [e.sym, e.maxVal]));
-
-function parseFormula(formula) {
-  const str = formula.trim();
-  let charge = 0;
-  let core = str;
-
-  const chargeMatch = core.match(/([+-])(\d*)$/);
-  if (chargeMatch) {
-    const sign = chargeMatch[1] === "+" ? 1 : -1;
-    const mag = chargeMatch[2] ? parseInt(chargeMatch[2]) : 1;
-    charge = sign * mag;
-    core = core.slice(0, -chargeMatch[0].length);
-  }
-
-  const atoms = [];
-  const re = /([A-Z][a-z]?)(\d*)/g;
-  let m;
-  while ((m = re.exec(core)) !== null) {
-    if (!m[1]) continue;
-    const elem = m[1];
-    const count = m[2] ? parseInt(m[2]) : 1;
-    for (let i = 0; i < count; i++) {
-      atoms.push({ element: elem, bonds: 0, formal_charge: 0 });
-    }
-  }
-  if (atoms.length === 0) return null;
-
-  if (charge !== 0) {
-    const heaviest = atoms.find((a) => a.element !== "H") || atoms[0];
-    heaviest.formal_charge = charge;
-  }
-
-  const remaining = atoms.map(
-    (a) => MAX_VAL[a.element] || 4,
-  );
-  for (let i = 0; i < atoms.length; i++) {
-    for (let j = i + 1; j < atoms.length; j++) {
-      if (remaining[i] <= 0 || remaining[j] <= 0) continue;
-      if (atoms[i].element === "H" && atoms[j].element === "H") continue;
-      const order = Math.min(remaining[i], remaining[j]);
-      atoms[i].bonds += order;
-      atoms[j].bonds += order;
-      remaining[i] -= order;
-      remaining[j] -= order;
-    }
-  }
-
-  const name =
-    formula.trim() || atoms.map((a) => a.element).join("");
-  return { name, atoms };
-}
-
-function parseEquation(equation) {
-  const arrow = equation.includes("->")
-    ? "->"
-    : equation.includes("→")
-      ? "→"
-      : equation.includes("=>")
-        ? "=>"
-        : null;
-  if (!arrow) return null;
-
-  const [lhs, rhs] = equation.split(arrow).map((s) => s.trim());
-  if (!lhs || !rhs) return null;
-
-  const reactants = lhs
-    .split("+")
-    .map((s) => parseFormula(s.trim()))
-    .filter(Boolean);
-  const products = rhs
-    .split("+")
-    .map((s) => parseFormula(s.trim()))
-    .filter(Boolean);
-
-  if (reactants.length === 0 || products.length === 0) return null;
-  return { reactants, products };
-}
 export default function ConstraintChecker({ presets }) {
   const [mode, setMode] = useState("equation");
   const [reactionIdx, setReactionIdx] = useState(0);
@@ -98,6 +24,7 @@ export default function ConstraintChecker({ presets }) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [show3DModal, setShow3DModal] = useState(false);
 
   const checkEquation = async () => {
     const parsed = parseEquation(equationText);
@@ -169,8 +96,14 @@ export default function ConstraintChecker({ presets }) {
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-10">
       <h1 className="text-[28px] font-semibold text-white mb-2">Constraint Checker</h1>
-      <p className="text-[15px] mb-8" style={{ color: "var(--text-secondary)" }}>
-        Verify reactions or molecules against conservation axioms.
+      <p className="text-[15px] mb-3" style={{ color: "var(--text-secondary)" }}>
+        Check if a reaction or molecule follows the rules.
+      </p>
+      <p className="text-[13px] mb-8 max-w-[750px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+        Pick a preset reaction or type your own equation (like 2H2 + O2 = 2H2O). The checker
+        looks at every molecule and verifies that atoms stay within their valency limits, charge
+        is conserved, and mass balances between reactants and products. If something is wrong it
+        tells you exactly which constraint failed and why.
       </p>
 
       <div className="flex gap-4 mb-8">
@@ -321,24 +254,39 @@ export default function ConstraintChecker({ presets }) {
 
               {checkedMolAtoms && (
                 <div className="rounded-lg overflow-hidden" style={{ background: "var(--bg-raised)" }}>
-                  <MoleculeViewer3D atoms={checkedMolAtoms.map(a => ({
-                    ...a, formal_charge: a.formal_charge || 0,
-                    implicit_h: 0, effective_valency: MAX_VAL[a.element] || 4,
-                    total_bonds: a.bonds || 0,
-                  }))} height={220} />
+                  <div className="px-4 pt-3 pb-1 flex items-center justify-between">
+                    <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>3D Preview</span>
+                    <button
+                      onClick={() => setShow3DModal(true)}
+                      className="flex items-center gap-1 text-[11px] hover:text-white transition-colors"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      <Maximize2 size={12} /> Expand
+                    </button>
+                  </div>
+                  <div className="cursor-pointer" onClick={() => setShow3DModal(true)} title="Click to enlarge">
+                    <MoleculeViewer3D atoms={checkedMolAtoms.map(a => ({
+                      ...a, formal_charge: a.formal_charge || 0,
+                      implicit_h: 0, effective_valency: MAX_VAL[a.element] || 4,
+                      total_bonds: a.bonds || 0,
+                    }))} height={220} />
+                  </div>
                 </div>
               )}
 
               {result.type === "molecule" && (
-                <div className="flex gap-8 text-[14px]">
-                  <div>
-                    <span className="block text-[12px]" style={{ color: "var(--text-muted)" }}>Mass</span>
-                    <span className="font-mono text-white">{result.total_mass?.toFixed(3)} u</span>
+                <div className="space-y-3">
+                  <div className="flex gap-8 text-[14px]">
+                    <div>
+                      <span className="block text-[12px]" style={{ color: "var(--text-muted)" }}>Mass</span>
+                      <span className="font-mono text-white">{result.total_mass?.toFixed(3)} u</span>
+                    </div>
+                    <div>
+                      <span className="block text-[12px]" style={{ color: "var(--text-muted)" }}>Charge</span>
+                      <span className="font-mono text-white">{result.total_charge > 0 ? "+" : ""}{result.total_charge}</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="block text-[12px]" style={{ color: "var(--text-muted)" }}>Charge</span>
-                    <span className="font-mono text-white">{result.total_charge > 0 ? "+" : ""}{result.total_charge}</span>
-                  </div>
+                  {result.lipinski && <LipinskiBadge lipinski={result.lipinski} />}
                 </div>
               )}
             </div>
@@ -349,6 +297,17 @@ export default function ConstraintChecker({ presets }) {
           )}
         </div>
       </div>
+
+      {show3DModal && checkedMolAtoms && (
+        <Molecule3DModal
+          atoms={checkedMolAtoms.map(a => ({
+            ...a, formal_charge: a.formal_charge || 0,
+            implicit_h: 0, effective_valency: MAX_VAL[a.element] || 4,
+            total_bonds: a.bonds || 0,
+          }))}
+          onClose={() => setShow3DModal(false)}
+        />
+      )}
     </div>
   );
 }

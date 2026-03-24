@@ -1,21 +1,30 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api } from "../api";
+import ReactionPicker from "../components/ReactionPicker";
 
 export default function TrainingPage({ presets }) {
   const [config, setConfig] = useState({
     population: 12, generations: 8, hidden_dim: 32, T: 10,
   });
+  const [reaction, setReaction] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  useEffect(() => {
+    if (presets && !reaction) {
+      setReaction({ reactants: presets.reactions[0].reactants, label: presets.reactions[0].name });
+    }
+  }, [presets, reaction]);
+
   const set = (k, v) => setConfig((p) => ({ ...p, [k]: v }));
 
   const run = async () => {
-    if (!presets) return;
+    const reactants = reaction?.reactants || presets?.reactions[0]?.reactants;
+    if (!reactants) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const data = await api.trainModel({ ...config, reactants: presets.reactions[0].reactants });
+      const data = await api.trainModel({ ...config, reactants });
       setResult(data);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -24,10 +33,18 @@ export default function TrainingPage({ presets }) {
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-10">
       <h1 className="text-[28px] font-semibold text-white mb-2">Model Training</h1>
-      <p className="text-[15px] mb-8" style={{ color: "var(--text-secondary)" }}>
-        Evolutionary selection to find optimal model seeds. Each generation evaluates
-        a population and selects the fittest based on constraint satisfaction.
+      <p className="text-[15px] mb-3" style={{ color: "var(--text-secondary)" }}>
+        Find the best model seeds through evolutionary selection over multiple generations.
       </p>
+      <p className="text-[13px] mb-8 max-w-[750px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+        This doesn't use gradient descent. Instead it spawns a population of models with different
+        random seeds, has each one generate a molecule, and scores them by how many constraint
+        violations they produce. The best performers survive and their seeds carry over to the next
+        generation. After a few rounds the population zeros in on seeds that consistently produce
+        valid molecules.
+      </p>
+
+      {presets && <ReactionPicker presets={presets} value={reaction} onChange={setReaction} />}
 
       <div className="grid grid-cols-12 gap-10 mb-8 pb-8 border-b" style={{ borderColor: "var(--border)" }}>
         <div className="col-span-7">

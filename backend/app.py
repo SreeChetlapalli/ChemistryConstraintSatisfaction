@@ -55,6 +55,21 @@ def serialize_atom(a):
     }
 
 
+def lipinski_properties(mol):
+    mw = mol.total_mass()
+    hbd = sum(1 for a in mol.atoms if a.element in ("N", "O") and a.implicit_h > 0)
+    hba = sum(1 for a in mol.atoms if a.element in ("N", "O", "F"))
+    heavy = sum(1 for a in mol.atoms if a.element != "H")
+    passes = mw < 500 and hbd <= 5 and hba <= 10
+    return {
+        "mw": round(mw, 3),
+        "hbd": hbd,
+        "hba": hba,
+        "heavy_atoms": heavy,
+        "passes_ro5": passes,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -143,6 +158,7 @@ def api_check_intermediate():
             "elapsed_ms": round(elapsed, 2),
             "total_mass": mol.total_mass(),
             "total_charge": mol.total_charge(),
+            "lipinski": lipinski_properties(mol),
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -193,6 +209,7 @@ def api_run_supervisor():
                 "total_mass": result.product.total_mass(),
                 "total_charge": result.product.total_charge(),
                 "adjacency": result.product_adjacency,
+                "lipinski": lipinski_properties(result.product),
             },
             "final_check": serialize_cr(result.final_check),
             "step_log": step_log,
@@ -343,6 +360,134 @@ def api_train():
                 "population": pop_size,
                 "generations": generations,
             },
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/monte-carlo", methods=["POST"])
+def api_monte_carlo():
+    data = request.json
+    try:
+        reactants = [parse_molecule(m) for m in data["reactants"]]
+        n = min(data.get("n_samples", 100), 500)
+        hidden_dim = data.get("hidden_dim", 32)
+        T = data.get("T", 10)
+
+        runs = []
+        violation_counts = {}
+        valid_count = 0
+        masses = []
+        lip_pass = 0
+
+        for seed in range(n):
+            m = MolecularDiffusionModel(hidden_dim=hidden_dim, seed=seed)
+            r = Supervisor(
+                m, reactants, T=T, max_retries=2, max_backtracks=3,
+                verbose=False, prefer_z3=False,
+            ).run()
+            val_ok = check_intermediate(r.product).sat
+            full_ok = r.success
+            prod_mass = r.product.total_mass()
+            lip = lipinski_properties(r.product)
+            if lip["passes_ro5"]:
+                lip_pass += 1
+
+            viols = r.final_check.violations if not full_ok else []
+            for v in viols:
+                vtype = v.split(":")[0].strip() if ":" in v else v.split(" ")[0]
+                violation_counts[vtype] = violation_counts.get(vtype, 0) + 1
+
+            if full_ok:
+                valid_count += 1
+            masses.append(prod_mass)
+
+            runs.append({
+                "seed": seed,
+                "valid": full_ok,
+                "valency_ok": val_ok,
+                "atom_count": len(r.product.atoms),
+                "mass": round(prod_mass, 2),
+                "backtracks": r.total_backtracks,
+                "corrections": r.total_corrections,
+                "wall_time_ms": round(r.wall_time_s * 1000, 1),
+                "lipinski_pass": lip["passes_ro5"],
+                "violations": viols,
+            })
+
+        avg_mass = sum(masses) / len(masses) if masses else 0
+        return jsonify({
+            "n": n,
+            "runs": runs,
+            "summary": {
+                "validity_rate": round(valid_count / n * 100, 1),
+                "avg_backtracks": round(sum(r["backtracks"] for r in runs) / n, 2),
+                "avg_corrections": round(sum(r["corrections"] for r in runs) / n, 2),
+                "avg_mass": round(avg_mass, 2),
+                "lipinski_pass_rate": round(lip_pass / n * 100, 1),
+                "violation_breakdown": violation_counts,
+            },
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/pathway", methods=["POST"])
+def api_pathway():
+    data = request.json
+    try:
+        steps_input = data["steps"]
+        hidden_dim = data.get("hidden_dim", 64)
+        seed = data.get("seed", 42)
+        T = data.get("T", 10)
+
+        step_results = []
+        prev_products = None
+
+        for i, step in enumerate(steps_input):
+            if step.get("reactants"):
+                reactants = [parse_molecule(m) for m in step["reactants"]]
+            elif prev_products:
+                reactants = prev_products
+            else:
+                return jsonify({"error": f"Step {i} has no reactants and no previous products"}), 400
+
+            m = MolecularDiffusionModel(hidden_dim=hidden_dim, seed=seed + i)
+            sup = Supervisor(
+                m, reactants, T=T, max_retries=2, max_backtracks=3,
+                verbose=False, prefer_z3=False,
+            )
+            result = sup.run()
+
+            product_mol = result.product
+            prev_products = [product_mol]
+
+            step_results.append({
+                "step": i,
+                "success": result.success,
+                "product": {
+                    "name": product_mol.name,
+                    "atoms": [serialize_atom(a) for a in product_mol.atoms],
+                    "total_mass": product_mol.total_mass(),
+                    "total_charge": product_mol.total_charge(),
+                    "adjacency": result.product_adjacency,
+                    "lipinski": lipinski_properties(product_mol),
+                },
+                "final_check": serialize_cr(result.final_check),
+                "backtracks": result.total_backtracks,
+                "corrections": result.total_corrections,
+                "wall_time_s": round(result.wall_time_s, 4),
+            })
+
+        first_reactants = [parse_molecule(m) for m in steps_input[0]["reactants"]]
+        last_product = prev_products[0] if prev_products else first_reactants[0]
+        chain_check = check_reaction(first_reactants, [last_product], prefer_z3=False)
+
+        return jsonify({
+            "steps": step_results,
+            "chain_valid": chain_check.sat,
+            "chain_check": serialize_cr(chain_check),
+            "total_steps": len(step_results),
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 400

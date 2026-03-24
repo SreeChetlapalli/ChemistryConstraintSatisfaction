@@ -1,7 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { api } from "../api";
 import MoleculeViewer3D from "../components/MoleculeViewer3D";
+import Molecule3DModal from "../components/Molecule3DModal";
+import ReactionPicker from "../components/ReactionPicker";
+import LipinskiBadge from "../components/LipinskiBadge";
 import { ELEMENT_MAP } from "../data/elements";
+import { Maximize2 } from "lucide-react";
 
 function elemColor(sym) {
   return ELEMENT_MAP[sym]?.color || "#6b7280";
@@ -11,21 +15,30 @@ export default function SupervisorPage({ presets }) {
   const [config, setConfig] = useState({
     T: 20, hidden_dim: 64, seed: 42, max_retries: 3, max_backtracks: 5,
   });
+  const [reaction, setReaction] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [timelineIdx, setTimelineIdx] = useState(-1);
+  const [show3DModal, setShow3DModal] = useState(false);
   const [noiseSchedule, setNoiseSchedule] = useState(null);
+
+  useEffect(() => {
+    if (presets && !reaction) {
+      setReaction({ reactants: presets.reactions[0].reactants, label: presets.reactions[0].name });
+    }
+  }, [presets, reaction]);
 
   useEffect(() => {
     api.getNoiseSchedule(config.T).then(setNoiseSchedule).catch(() => {});
   }, [config.T]);
 
   const run = async () => {
-    if (!presets) return;
+    const reactants = reaction?.reactants || presets?.reactions[0]?.reactants;
+    if (!reactants) return;
     setLoading(true); setError(null); setResult(null); setTimelineIdx(-1);
     try {
-      const data = await api.runSupervisor({ ...config, reactants: presets.reactions[0].reactants });
+      const data = await api.runSupervisor({ ...config, reactants });
       setResult(data);
       if (data.intermediates?.length > 0) setTimelineIdx(data.intermediates.length - 1);
     } catch (e) { setError(e.message); }
@@ -57,9 +70,18 @@ export default function SupervisorPage({ presets }) {
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-10">
       <h1 className="text-[28px] font-semibold text-white mb-2">Supervisor</h1>
-      <p className="text-[15px] mb-8" style={{ color: "var(--text-secondary)" }}>
-        Run the constrained diffusion loop and watch molecules evolve under real-time constraint enforcement.
+      <p className="text-[15px] mb-3" style={{ color: "var(--text-secondary)" }}>
+        Run the constrained diffusion loop and watch molecules get built step by step.
       </p>
+      <p className="text-[13px] mb-8 max-w-[750px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+        A graph neural network proposes molecular structures through a diffusion process. At each
+        denoising step the constraint engine checks valency limits, charge conservation, and bond
+        validity, then fixes anything that breaks the rules before moving on. You can scrub through
+        the timeline to see how the molecule changed at each step. Pick a reaction and tweak the
+        parameters below to try it out.
+      </p>
+
+      {presets && <ReactionPicker presets={presets} value={reaction} onChange={setReaction} />}
 
       <div className="flex items-end gap-4 mb-8 pb-8 border-b" style={{ borderColor: "var(--border)" }}>
         {[
@@ -81,7 +103,7 @@ export default function SupervisorPage({ presets }) {
           </div>
         ))}
         <button
-          onClick={run} disabled={loading || !presets}
+          onClick={run} disabled={loading || (!reaction && !presets)}
           className="px-5 py-2 bg-white text-black text-[14px] font-medium rounded-md hover:bg-neutral-200 disabled:opacity-30 transition-colors"
         >
           {loading ? "Running..." : "Run"}
@@ -132,16 +154,31 @@ export default function SupervisorPage({ presets }) {
                 <span className="text-[13px] text-white">
                   {currentSnapshot?.t > 0 ? `t=${currentSnapshot.t}` : "Product"}
                 </span>
-                <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>drag to rotate</span>
+                {currentSnapshot && (
+                  <button
+                    onClick={() => setShow3DModal(true)}
+                    className="flex items-center gap-1 text-[11px] hover:text-white transition-colors"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    <Maximize2 size={12} /> Expand
+                  </button>
+                )}
               </div>
               {currentSnapshot && (
-                <MoleculeViewer3D atoms={currentSnapshot.atoms} adjacency={currentSnapshot.adjacency} height={340} />
+                <div className="cursor-pointer" onClick={() => setShow3DModal(true)} title="Click to enlarge">
+                  <MoleculeViewer3D atoms={currentSnapshot.atoms} adjacency={currentSnapshot.adjacency} height={340} />
+                </div>
               )}
               {currentSnapshot && (
-                <div className="flex gap-5 px-5 py-3 text-[13px]" style={{ color: "var(--text-muted)" }}>
-                  <span>{currentSnapshot.total_mass?.toFixed(2)} u</span>
-                  <span>charge {currentSnapshot.total_charge > 0 ? "+" : ""}{currentSnapshot.total_charge}</span>
-                  <span>{currentSnapshot.atoms.length} atoms</span>
+                <div className="px-5 py-3 space-y-2">
+                  <div className="flex gap-5 text-[13px]" style={{ color: "var(--text-muted)" }}>
+                    <span>{currentSnapshot.total_mass?.toFixed(2)} u</span>
+                    <span>charge {currentSnapshot.total_charge > 0 ? "+" : ""}{currentSnapshot.total_charge}</span>
+                    <span>{currentSnapshot.atoms.length} atoms</span>
+                  </div>
+                  {result?.product?.lipinski && currentSnapshot.t === 0 && (
+                    <LipinskiBadge lipinski={result.product.lipinski} />
+                  )}
                 </div>
               )}
             </div>
@@ -226,6 +263,14 @@ export default function SupervisorPage({ presets }) {
             </div>
           )}
         </>
+      )}
+
+      {show3DModal && currentSnapshot && (
+        <Molecule3DModal
+          atoms={currentSnapshot.atoms}
+          adjacency={currentSnapshot.adjacency}
+          onClose={() => setShow3DModal(false)}
+        />
       )}
     </div>
   );

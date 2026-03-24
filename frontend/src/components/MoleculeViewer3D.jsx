@@ -17,15 +17,15 @@ function layout3D(atoms, adjacency) {
 
   const pos = atoms.map(() =>
     new THREE.Vector3(
-      (Math.random() - 0.5) * 3,
-      (Math.random() - 0.5) * 3,
-      (Math.random() - 0.5) * 3,
+      (Math.random() - 0.5) * 4,
+      (Math.random() - 0.5) * 4,
+      (Math.random() - 0.5) * 4,
     ),
   );
 
   const adj = adjacency || buildAdj(atoms);
-  const idealDist = 1.8;
-  const repulsion = 2.0;
+  const idealDist = 2.2;
+  const repulsion = 3.0;
 
   for (let iter = 0; iter < 200; iter++) {
     const forces = pos.map(() => new THREE.Vector3());
@@ -62,7 +62,7 @@ function layout3D(atoms, adjacency) {
     maxR = Math.max(maxR, p.length());
   });
   if (maxR > 0) {
-    const scale = 3 / maxR;
+    const scale = 4 / maxR;
     pos.forEach((p) => p.multiplyScalar(scale));
   }
 
@@ -89,7 +89,7 @@ function buildAdj(atoms) {
 function AtomSphere({ position, element, index, hovered, onHover }) {
   const ref = useRef();
   const { color, radius } = getElem(element);
-  const scale = radius * 0.7;
+  const scale = Math.max(0.45, radius * 1.0);
   const isHov = hovered === index;
 
   return (
@@ -109,8 +109,8 @@ function AtomSphere({ position, element, index, hovered, onHover }) {
         />
       </mesh>
       <Text
-        position={[0, scale + 0.25, 0]}
-        fontSize={0.22}
+        position={[0, scale + 0.3, 0]}
+        fontSize={0.28}
         color="white"
         anchorX="center"
         anchorY="bottom"
@@ -152,7 +152,7 @@ function Bond({ start, end, order }) {
         const p = mid.clone().add(offset);
         return (
           <mesh key={i} position={p} quaternion={orientation}>
-            <cylinderGeometry args={[0.04, 0.04, len, 8]} />
+            <cylinderGeometry args={[0.06, 0.06, len, 8]} />
             <meshStandardMaterial
               color="#4a5568"
               roughness={0.5}
@@ -242,14 +242,14 @@ export default function MoleculeViewer3D({
   return (
     <div style={{ height }} className="w-full rounded-lg overflow-hidden">
       <Canvas
-        camera={{ position: [0, 0, 8], fov: 50 }}
+        camera={{ position: [0, 0, atoms.length <= 3 ? 6 : 9], fov: 55 }}
         gl={{ antialias: true, alpha: true }}
         style={{ background: "transparent" }}
       >
         <color attach="background" args={["#171717"]} />
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[5, 5, 5]} intensity={0.8} />
-        <directionalLight position={[-3, -3, 2]} intensity={0.3} />
+        <ambientLight intensity={0.7} />
+        <directionalLight position={[5, 5, 5]} intensity={0.9} />
+        <directionalLight position={[-3, -3, 2]} intensity={0.4} />
         <MoleculeScene
           atoms={atoms}
           adjacency={adjacency}
@@ -257,8 +257,8 @@ export default function MoleculeViewer3D({
         />
         <OrbitControls
           enablePan={false}
-          minDistance={3}
-          maxDistance={15}
+          minDistance={2}
+          maxDistance={20}
           autoRotate={false}
         />
       </Canvas>

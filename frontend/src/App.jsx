@@ -6,6 +6,8 @@ import SupervisorPage from "./pages/Supervisor";
 import BenchmarkPage from "./pages/Benchmark";
 import MoleculeLab from "./pages/MoleculeLab";
 import TrainingPage from "./pages/Training";
+import MonteCarloPage from "./pages/MonteCarlo";
+import PathwayPage from "./pages/Pathway";
 
 const TABS = [
   { id: "overview", label: "Overview" },
@@ -14,6 +16,8 @@ const TABS = [
   { id: "supervisor", label: "Supervisor" },
   { id: "training", label: "Training" },
   { id: "benchmark", label: "Benchmark" },
+  { id: "simulation", label: "Simulation" },
+  { id: "pathways", label: "Pathways" },
 ];
 
 export default function App() {
@@ -40,6 +44,10 @@ export default function App() {
         return <TrainingPage presets={presets} />;
       case "benchmark":
         return <BenchmarkPage presets={presets} />;
+      case "simulation":
+        return <MonteCarloPage presets={presets} />;
+      case "pathways":
+        return <PathwayPage presets={presets} />;
       default:
         return null;
     }
