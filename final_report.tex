@@ -18,13 +18,13 @@
 Generative models for molecules can produce structures that violate basic chemistry rules such as
 bond valency limits, mass conservation, and charge balance. Rather than filtering out bad outputs
 after the fact, this work proposes \textbf{ChemCS}, a system that enforces chemical constraints
-\emph{during} the generative process. We pair a small graph neural network (GNN) diffusion model
-with a \textbf{supervisor loop} backed by Microsoft's Z3 theorem prover (with a pure-Python fallback).
-At each reverse-diffusion step, the supervisor checks the candidate molecule against a set of
-chemical axioms and either commits the step, applies a lightweight correction, or backtracks.
-We also introduce a \textbf{constraint-aware training loss} with a curriculum schedule so the
+during the generative process. We pair a small graph neural network (GNN) diffusion model
+with a \textbf{supervisor loop} backed by Microsoft's Z3 theorem prover. At each reverse-diffusion 
+step, the supervisor checks the candidate molecule against a set of chemical axioms and either 
+commits the step, applies a lightweight correction, or backtracks. We also introduce a 
+\textbf{constraint-aware training loss} with a curriculum schedule so the
 model can learn to avoid violations on its own. Experiments across three reaction types show that
-supervised generation achieves \textbf{100\% valency validity} compared to roughly 15\% for
+supervised generation achieves 100\% valency validity compared to roughly 15\% for
 unsupervised generation with the same random-weight model, and that the training loss drops by
 over 30\% within 100 epochs on a small dataset.
 \end{abstract}
@@ -32,7 +32,7 @@ over 30\% within 100 epochs on a small dataset.
 \section{Introduction}
 
 Molecular generation is important for drug discovery, materials science, and chemical engineering.
-Recent work has applied diffusion models---originally designed for images---to molecular graphs,
+Recent work has applied diffusion models --- originally designed for images --- to molecular graphs,
 treating atoms as nodes and bonds as edges. The model starts from noise and iteratively denoises
 toward a valid molecule.
 
@@ -76,45 +76,47 @@ posterior to compute $x_{t-1}$. The supervisor wraps this loop.
 
 Each atom is encoded as a feature vector of length 12: a one-hot encoding over 10 supported
 elements (H, C, N, O, F, P, S, Cl, Br, I), a normalized bond count, and a normalized formal charge.
-The bond structure is an $n \times n$ adjacency matrix where entries are bond orders (0--3).
+The bond structure is an $n \times n$ adjacency matrix where entries are bond orders (0 -- 3).
+
 
 \subsection{Diffusion Model}
 
-The core model is a two-layer graph neural network (GNN) implemented in NumPy for inference.
-Each layer performs message passing via mean-neighbor aggregation:
-
+The core model is a two-layer graph neural network (GNN). At each layer, every atom
+updates its representation by combining its own features with the average of its
+bonded neighbors' features:
 \[
   h_i^{(l+1)} = \text{ReLU}\!\left(W_\text{self}^{(l)} h_i^{(l)}
     + W_\text{neigh}^{(l)} \frac{1}{|\mathcal{N}(i)|} \sum_{j \in \mathcal{N}(i)} h_j^{(l)}\right)
 \]
+\noindent where $h_i^{(l)}$ is the feature vector for atom $i$ at layer $l$,
+$W_\text{self}^{(l)}$ and $W_\text{neigh}^{(l)}$ are learned weight matrices,
+$\mathcal{N}(i)$ is the set of atoms bonded to atom $i$,
+and $\text{ReLU}(x) = \max(0, x)$ clips negative values to zero.
+After two such layers, a linear head predicts atom types and a bond head predicts
+bond orders (0--3) for each pair of atoms.
 
-Atom features are predicted by a linear head on the final hidden states. Bond orders are predicted
-by concatenating pairs of atom embeddings and passing them through a bond head that outputs logits
-over orders 0--3.
-
-The noise schedule supports both linear and cosine variants. The linear schedule sets
-$\beta_t = 10^{-4} + \frac{t}{T}(0.1 - 10^{-4})$ and computes $\bar{\alpha}_t = \prod_{s=1}^t (1 - \beta_s)$.
-The cosine schedule follows Nichol \& Dhariwal (2021):
-$\bar{\alpha}_t = \frac{f(t)}{f(0)}$ where $f(u) = \cos^2\!\left(\frac{u/T + s}{1+s} \cdot \frac{\pi}{2}\right)$.
+The model supports two noise schedules that control how quickly the molecule moves
+from clean to noisy (and back). The \textbf{linear} schedule adds noise at a steady,
+fixed rate; the \textbf{cosine} schedule (Nichol \& Dhariwal, 2021) adds noise more
+slowly at the start and end, giving the model more room to make fine-grained
+adjustments when the molecule is nearly clean.
 
 \subsection{Constraint Verification Layer}
 
-The constraint checker supports two backends:
+The constraint checker:
 
 \begin{itemize}[nosep]
   \item \textbf{Z3 backend:} Encodes mass conservation as Z3 real arithmetic, charge and atom counts
         as integer arithmetic, and valency as integer inequality queries. Each check is posed as
         ``is this constraint violated?''---if the solver returns SAT, the violation is real.
-  \item \textbf{Pure-Python backend:} Performs the same checks using standard arithmetic. Used as a
-        fallback when Z3 is not installed, or when speed matters more than solver-backed verification.
 \end{itemize}
 
-Both backends check the same four axioms (valency, mass, charge, atom conservation) and return a
+This checks four axioms (valency, mass, charge, atom conservation) and returns a
 \texttt{ConstraintResult} with a boolean \texttt{sat} field and a list of violation strings.
 
 \subsection{Supervisor Loop}
 
-The supervisor wraps the diffusion model's reverse process (Algorithm~1):
+The supervisor wraps around the diffusion model's reverse process (Algorithm~1):
 
 \begin{enumerate}[nosep]
   \item Encode the concatenated reactant atoms and apply full noise ($t = T$).
@@ -140,16 +142,29 @@ A key insight from the midterm was that the supervisor ``silently repairs'' viol
 the model learning anything from its mistakes. To address this, we built a PyTorch training
 module with the same GNN architecture:
 
+```latex
 \begin{itemize}[nosep]
-  \item \textbf{Constraint-aware loss:} The training loss combines four terms---denoising MSE,
+  \item \textbf{Constraint-aware loss:} The training loss combines four terms: denoising MSE,
         bond cross-entropy, a differentiable valency penalty, and an element conservation penalty.
+        In other words, the model is simultaneously scored on how accurately it predicts the
+        molecule, the bond types, and whether it respects chemistry rules.
         The valency penalty uses soft probabilities over element types so gradients flow through:
         \[
           \mathcal{L}_\text{val} = \text{mean}\!\left(\text{ReLU}\!\left(\sum_j \mathbb{E}[\text{bond}_{ij}] - \sum_e p(e_i = e) \cdot V_e\right)\right)
         \]
-  \item \textbf{Curriculum schedule:} During the first fraction of training (default 25\%), constraint
-        penalties are zeroed so the model can learn basic denoising. After warmup, penalties ramp
-        linearly to their full weight.
+        \noindent where $\mathbb{E}[\text{bond}_{ij}]$ is the expected number of bonds on atom $i$,
+        $p(e_i = e)$ is the predicted probability that atom $i$ is element $e$,
+        and $V_e$ is the maximum allowed bonds for element $e$ (its valency).
+        The ReLU ensures only \emph{excess} bonds are penalized/ This means that if the atom is within its bond
+        limit, the penalty is zero. Soft probabilities are used rather than hard element
+        assignments so that gradients can flow back through the loss during training.
+
+  \item \textbf{Curriculum schedule:} Training proceeds in two phases, similar to teaching
+        someone a skill before adding constraints. During the first 25\% of training (warmup),
+        constraint penalties are zeroed so the model can focus on learning basic denoising
+        without competing objectives pulling it in different directions. After warmup, the
+        penalties ramp linearly to their full weight, requiring the model to satisfy chemistry
+        rules on top of what it already learned.
 \end{itemize}
 
 Trained weights are exported from PyTorch to the NumPy model via a \texttt{export\_to\_numpy()}
@@ -171,8 +186,7 @@ We compare three configurations:
 \subsection{Evaluation Metrics}
 
 \textbf{Valency validity} is the fraction of generated molecules where every atom's total bond count
-(explicit + implicit H) does not exceed its effective valency. This is the primary metric since
-it can be checked without reactant context.
+(explicit + implicit H) does not exceed its effective valency. This is the primary metric.
 
 \textbf{Full conservation validity} requires mass, charge, and atom counts to all be conserved.
 This is harder and depends heavily on the model having learned the right element distributions.
@@ -190,13 +204,8 @@ The constraint checker correctly identifies all tested cases:
   \item Valid SN2 reaction (CH$_3$Br + OH$^-$ $\rightarrow$ CH$_3$OH + Br$^-$): all axioms satisfied.
   \item Valid combustion (CH$_4$ + 2O$_2$ $\rightarrow$ CO$_2$ + 2H$_2$O): all axioms satisfied.
   \item Overvalenced carbon (5 bonds): correctly flagged.
-  \item Missing product (no Br$^-$): mass, charge, and atom conservation all flagged.
   \item Charge mismatch (neutral Br instead of Br$^-$): charge violation caught.
-  \item NH$_4^+$ with 4 bonds on nitrogen: correctly accepted (charge +1 increases valency to 4).
 \end{itemize}
-
-Both the Z3 and pure-Python backends agree on all test cases. The test suite contains 118 tests,
-all passing.
 
 \subsection{Supervised vs Unsupervised Generation}
 
