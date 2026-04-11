@@ -16,28 +16,26 @@
 \@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Chemical axioms enforced by the constraint checker.}}{3}{table.caption.1}\protected@file@percent }
 \providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
 \newlabel{tab:axioms}{{1}{3}{Chemical axioms enforced by the constraint checker}{table.caption.1}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Supported elements with atomic mass and valency rules.}}{4}{table.caption.2}\protected@file@percent }
-\newlabel{tab:elements}{{2}{4}{Supported elements with atomic mass and valency rules}{table.caption.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Supported elements with atomic mass, maximum valency, and charge-adjusted valency. The ``Charge adjustment'' column shows how a non-zero formal charge on the atom changes the number of bonds it is allowed to form. For example, nitrogen normally allows at most 3 bonds, but when it carries a $+1$ formal charge (as in the ammonium ion NH$_4^+$) the limit increases to~4. A dash indicates that no charge adjustment is defined.}}{4}{table.caption.2}\protected@file@percent }
+\newlabel{tab:elements}{{2}{4}{Supported elements with atomic mass, maximum valency, and charge-adjusted valency. The ``Charge adjustment'' column shows how a non-zero formal charge on the atom changes the number of bonds it is allowed to form. For example, nitrogen normally allows at most 3 bonds, but when it carries a $+1$ formal charge (as in the ammonium ion NH$_4^+$) the limit increases to~4. A dash indicates that no charge adjustment is defined}{table.caption.2}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.3}The Generation Task}{4}{subsection.3.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {4}Methodology}{4}{section.4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Atom Feature Encoding}{4}{subsection.4.1}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Layout of the 12-dimensional atom feature vector.}}{4}{table.caption.3}\protected@file@percent }
 \newlabel{tab:features}{{3}{4}{Layout of the 12-dimensional atom feature vector}{table.caption.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}GNN Denoiser Architecture}{4}{subsection.4.2}\protected@file@percent }
 \citation{nichol2021improved}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}GNN Denoiser Architecture}{5}{subsection.4.2}\protected@file@percent }
 \newlabel{eq:gnn}{{1}{5}{GNN Denoiser Architecture}{equation.4.1}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Noise Schedule}{5}{subsection.4.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Constraint Checking with Z3}{5}{subsection.4.4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Supervisor Loop}{6}{subsection.4.5}\protected@file@percent }
-\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces Supervised reverse-diffusion generation.}}{6}{algorithm.1}\protected@file@percent }
-\newlabel{alg:supervisor}{{1}{6}{Supervised reverse-diffusion generation}{algorithm.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Correction Strategies}{7}{subsection.4.6}\protected@file@percent }
-\newlabel{sec:corrections}{{4.6}{7}{Correction Strategies}{subsection.4.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Correction Strategies}{6}{subsection.4.6}\protected@file@percent }
+\newlabel{sec:corrections}{{4.6}{6}{Correction Strategies}{subsection.4.6}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Correction strategies applied by the supervisor.}}{7}{table.caption.4}\protected@file@percent }
 \newlabel{tab:corrections}{{4}{7}{Correction strategies applied by the supervisor}{table.caption.4}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.7}Constraint-Aware Training}{7}{subsection.4.7}\protected@file@percent }
 \newlabel{sec:training}{{4.7}{7}{Constraint-Aware Training}{subsection.4.7}{}}
-\newlabel{eq:loss}{{4}{8}{Constraint-Aware Training}{equation.4.4}{}}
+\newlabel{eq:loss}{{4}{7}{Constraint-Aware Training}{equation.4.4}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Components of the training loss function.}}{8}{table.caption.5}\protected@file@percent }
 \newlabel{tab:loss}{{5}{8}{Components of the training loss function}{table.caption.5}{}}
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {4.7.1}Curriculum Schedule}{8}{subsubsection.4.7.1}\protected@file@percent }
@@ -53,26 +51,26 @@
 \@writefile{toc}{\contentsline {section}{\numberline {6}Results}{10}{section.6}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Constraint Checker Validation}{10}{subsection.6.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Supervised vs. Unsupervised Generation}{10}{subsection.6.2}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Valency validity (\%) for supervised and unsupervised generation across three reactions, each tested with 50~random seeds using an untrained 32-dimensional GNN. The supervisor achieves 100\% valency validity on all reactions, while the unsupervised baseline achieves only 12--22\%.}}{11}{figure.caption.7}\protected@file@percent }
-\newlabel{fig:valency}{{1}{11}{Valency validity (\%) for supervised and unsupervised generation across three reactions, each tested with 50~random seeds using an untrained 32-dimensional GNN. The supervisor achieves 100\% valency validity on all reactions, while the unsupervised baseline achieves only 12--22\%}{figure.caption.7}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Benchmark results: 50 random seeds per reaction, untrained GNN with hidden dimension~32, $T{=}10$ diffusion steps.}}{11}{table.caption.8}\protected@file@percent }
-\newlabel{tab:results}{{7}{11}{Benchmark results: 50 random seeds per reaction, untrained GNN with hidden dimension~32, $T{=}10$ diffusion steps}{table.caption.8}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Training Dynamics}{12}{subsection.6.3}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Training loss components over 200~epochs on water, methane, and ethanol. The valency penalty starts high and drops sharply once activated by the curriculum (around epoch~50). Bond cross-entropy dominates the total loss throughout training. The denoising MSE converges quickly in the first 20~epochs.}}{12}{figure.caption.9}\protected@file@percent }
-\newlabel{fig:training}{{2}{12}{Training loss components over 200~epochs on water, methane, and ethanol. The valency penalty starts high and drops sharply once activated by the curriculum (around epoch~50). Bond cross-entropy dominates the total loss throughout training. The denoising MSE converges quickly in the first 20~epochs}{figure.caption.9}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Valency validity (\%) for supervised and unsupervised generation across three reactions, each tested with 50 random seeds using an untrained 32-dimensional GNN. The supervisor achieves 100\% valency validity on all reactions, while the unsupervised baseline achieves only 12--22\%.}}{10}{figure.caption.7}\protected@file@percent }
+\newlabel{fig:valency}{{1}{10}{Valency validity (\%) for supervised and unsupervised generation across three reactions, each tested with 50 random seeds using an untrained 32-dimensional GNN. The supervisor achieves 100\% valency validity on all reactions, while the unsupervised baseline achieves only 12--22\%}{figure.caption.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Benchmark results: 50 random seeds per reaction, untrained GNN with hidden dimension 32, $T{=}10$ diffusion steps.}}{11}{table.caption.8}\protected@file@percent }
+\newlabel{tab:results}{{7}{11}{Benchmark results: 50 random seeds per reaction, untrained GNN with hidden dimension 32, $T{=}10$ diffusion steps}{table.caption.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Training Dynamics}{11}{subsection.6.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Training loss components over 200 epochs on water, methane, and ethanol. The valency penalty starts high and drops sharply once activated by the curriculum (around epoch 50). Bond cross-entropy dominates the total loss throughout training. The denoising MSE converges quickly in the first 20 epochs.}}{11}{figure.caption.9}\protected@file@percent }
+\newlabel{fig:training}{{2}{11}{Training loss components over 200 epochs on water, methane, and ethanol. The valency penalty starts high and drops sharply once activated by the curriculum (around epoch 50). Bond cross-entropy dominates the total loss throughout training. The denoising MSE converges quickly in the first 20 epochs}{figure.caption.9}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.4}Curriculum Schedule Ablation}{12}{subsection.6.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Curriculum penalty weight scale over 100 epochs for three warmup strategies. The 25\% warmup (blue) provides a balanced ramp; 50\% delays constraint enforcement; no warmup applies full penalties immediately. In practice, 25\% was found to give the most stable training convergence.}}{12}{figure.caption.10}\protected@file@percent }
+\newlabel{fig:curriculum}{{3}{12}{Curriculum penalty weight scale over 100 epochs for three warmup strategies. The 25\% warmup (blue) provides a balanced ramp; 50\% delays constraint enforcement; no warmup applies full penalties immediately. In practice, 25\% was found to give the most stable training convergence}{figure.caption.10}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Discussion}{12}{section.7}\protected@file@percent }
 \citation{ramakrishnan2014qm9}
 \citation{irwin2012zinc}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Curriculum penalty weight scale over 100~epochs for three warmup strategies. The 25\% warmup (blue) provides a balanced ramp; 50\% delays constraint enforcement; no warmup applies full penalties immediately. In practice, 25\% was found to give the most stable training convergence.}}{13}{figure.caption.10}\protected@file@percent }
-\newlabel{fig:curriculum}{{3}{13}{Curriculum penalty weight scale over 100~epochs for three warmup strategies. The 25\% warmup (blue) provides a balanced ramp; 50\% delays constraint enforcement; no warmup applies full penalties immediately. In practice, 25\% was found to give the most stable training convergence}{figure.caption.10}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {7}Discussion}{13}{section.7}\protected@file@percent }
 \bibcite{hoogeboom2022equivariant}{1}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Limitations and Future Work}{13}{section.8}\protected@file@percent }
+\newlabel{sec:future}{{8}{13}{Limitations and Future Work}{section.8}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{13}{section.9}\protected@file@percent }
 \bibcite{vignac2023digress}{2}
 \bibcite{nichol2021improved}{3}
 \bibcite{demoura2008z3}{4}
 \bibcite{ramakrishnan2014qm9}{5}
-\@writefile{toc}{\contentsline {section}{\numberline {8}Limitations and Future Work}{14}{section.8}\protected@file@percent }
-\newlabel{sec:future}{{8}{14}{Limitations and Future Work}{section.8}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{14}{section.9}\protected@file@percent }
 \bibcite{irwin2012zinc}{6}
-\gdef \@abspage@last{15}
+\gdef \@abspage@last{14}
