@@ -207,10 +207,25 @@ The constraint checker correctly identifies all tested cases:
   \item Charge mismatch (neutral Br instead of Br$^-$): charge violation caught.
 \end{itemize}
 
-\subsection{Supervised vs Unsupervised Generation}
+
+Here's a plain English breakdown of each subsection:
+
+**Supervised vs. Unsupervised Generation:** This is the core "does it work?" test. They ran the molecule generator 50 times for each of three reaction types, using a model with completely random weights (no training at all — like asking someone who's never studied chemistry to draw molecules). Without the supervisor, only about 15% of generated molecules had valid bond counts. With the supervisor catching and fixing mistakes at every step, that jumped to 100%. The catch: it takes longer because the supervisor is constantly checking and sometimes redoing steps. Importantly, *both* approaches completely failed at the harder test (mass, charge, and atom conservation staying at 0%) — but that's expected, since a random-weight model has no idea what elements to even place. That failure is exactly what motivates building the training module.
+
+**Training Performance:** They trained the model on just 3 simple molecules (water, methane, ethanol) for 200 rounds. The key thing to watch is the valency penalty score — it started very high (~5.5, meaning the model was constantly over-bonding atoms) and dropped to nearly zero (below 0.2), showing the model genuinely *learned* to respect bond limits rather than just having the supervisor fix them. The bond prediction loss stayed the highest throughout, which makes sense — predicting exact bond types is inherently harder than predicting continuous values.
+
+**Curriculum Schedule:** This section shows *why* the two-phase training strategy matters. If you throw all the penalties at the model from day one, the competing objectives make training unstable. Starting with 25% warmup (pure denoising first, penalties added after) gives the model a solid foundation before adding the harder chemistry constraints — like learning to walk before you run.
+
+---
+
+Now here's the LaTeX with explanations woven in:
+
+```latex
+\subsection{Supervised vs.\ Unsupervised Generation}
 
 Figure~1 shows valency validity across 50 generation runs per reaction type with random (untrained)
-model weights.
+model weights. Both configurations use the same GNN---the only difference is whether the
+supervisor loop is active.
 
 \begin{figure}[H]
   \centering
@@ -219,17 +234,21 @@ model weights.
            Unsupervised generation averages roughly 15\%. Both use the same random-weight GNN.}
 \end{figure}
 
-The supervisor brings valency validity from 12--22\% (unsupervised) to 100\% (supervised) by
-correcting or backtracking at every step. The tradeoff is time: supervised runs take about 3--4$\times$
-longer than unsupervised runs due to the constraint checking and re-sampling overhead.
+Without supervision, only $\sim$15\% of generated molecules have valid bond counts---the model
+produces chemically impossible structures most of the time. The supervisor brings this to
+100\% by catching and correcting violations at every diffusion step, even with a completely
+untrained model. The tradeoff is speed: supervised runs take longer due to the constraint
+checking and re-sampling overhead.
 
-Full conservation (mass + charge + atoms) remains at 0\% for both, which is expected since the model
-has random weights and cannot predict correct element types. This motivates the training module.
+Full conservation (mass + charge + atoms) remains at 0\% for both configurations. This is
+expected: a random-weight model has no knowledge of chemistry and cannot predict correct
+element types, so reactions cannot be balanced. This gap directly motivates the training
+module described in Section~3.5.
 
 \subsection{Training Performance}
 
 We trained the PyTorch GNN on a 3-molecule dataset (water, methane, ethanol) for 200 epochs.
-Figure~2 shows the loss curve.
+Figure~2 shows the loss curve over training.
 
 \begin{figure}[H]
   \centering
@@ -239,13 +258,17 @@ Figure~2 shows the loss curve.
            by about 30\% from the first 10 to the last 10 epochs.}
 \end{figure}
 
-The valency penalty drops from $\sim$5.5 down to below 0.2, showing the model is learning to respect
-valency constraints through the differentiable penalty. The bond cross-entropy dominates the total
-loss, which is expected given the discrete nature of bond prediction.
+The most telling signal is the valency penalty, which drops from $\sim$5.5 down to below 0.2.
+This means the model is genuinely \emph{learning} to avoid over-bonded atoms through the
+differentiable penalty---rather than relying on the supervisor to fix them after the fact.
+The bond cross-entropy dominates the total loss throughout training, which is expected:
+predicting discrete bond types (0, 1, 2, or 3) is an inherently harder task than the
+continuous denoising objective.
 
 \subsection{Curriculum Schedule}
 
-Figure~3 illustrates the curriculum schedule for different warmup fractions.
+Figure~3 illustrates how the penalty weight scales over training for three different warmup
+fractions.
 
 \begin{figure}[H]
   \centering
@@ -254,31 +277,13 @@ Figure~3 illustrates the curriculum schedule for different warmup fractions.
            trains on pure denoising loss only. After warmup, constraint penalties ramp linearly.}
 \end{figure}
 
-The 25\% warmup (our default) lets the model establish a reasonable denoising baseline before
-constraint penalties kick in, avoiding early instability from competing loss terms.
+The 25\% warmup (our default) strikes the best balance. Starting with no constraint penalties
+lets the model build a stable denoising baseline first. Introducing penalties too early causes
+instability, as the model is pulled in competing directions before it has learned the basics.
+After warmup, the linear ramp ensures a smooth transition to full constraint enforcement
+rather than an abrupt shift that could destabilize training.
 
-\subsection{Progress from Midterm}
 
-At the midterm, we had the core constraint checker (mass, charge, valency with Z3 and pure-Python
-backends) and the basic supervisor loop. The supervisor at that point improved valency validity from
-about 8\% to 32\%.
-
-Since then, we have:
-
-\begin{itemize}[nosep]
-  \item Added \textbf{atom/element conservation} as a fourth chemical axiom in both backends.
-  \item Added a \textbf{charge correction} strategy to the supervisor.
-  \item Built a \textbf{PyTorch training module} with a constraint-aware loss and curriculum schedule.
-  \item Added \textbf{cosine noise schedule} support.
-  \item Added \textbf{model save/load} for persisting trained weights.
-  \item Implemented \textbf{weight export} from PyTorch to NumPy for inference.
-  \item Expanded the benchmark to \textbf{3 reaction types} (SN2, combustion, acid-base) with 50 runs each.
-  \item Added detailed \textbf{generation metrics} (commit rate, corrections, backtracks, timing).
-  \item Grew the test suite from $\sim$60 tests to \textbf{118 tests}, all passing.
-  \item Improved the supervisor's valency validity from 32\% to \textbf{100\%} by refining correction strategies.
-\end{itemize}
-
-\section{Discussion}
 
 This work shows the value of integrating formal verification with generative models:
 
