@@ -37,6 +37,7 @@ ATOMIC_MASS: Dict[str, float] = {
     "Cl": 35.45,
     "Br": 79.904,
     "I": 126.904,
+    "Na": 22.990,
 }
 
 #: Maximum covalent valency for each element.
@@ -51,6 +52,7 @@ MAX_VALENCY: Dict[str, int] = {
     "Cl": 1,
     "Br": 1,
     "I":  1,
+    "Na": 1,
 }
 
 #: Extra valency allowed when an atom has a formal charge.

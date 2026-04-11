@@ -24,7 +24,7 @@ from ..constraints.chemical_axioms import (
 # Element encoding
 # ---------------------------------------------------------------------------
 
-ELEMENTS = ["H", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I"]
+ELEMENTS = ["H", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I", "Na"]
 ELEM_TO_IDX = {e: i for i, e in enumerate(ELEMENTS)}
 NUM_ELEM = len(ELEMENTS)
 

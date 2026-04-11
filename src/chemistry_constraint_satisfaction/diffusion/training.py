@@ -169,11 +169,13 @@ def _element_conservation_penalty(
 ) -> torch.Tensor:
     """MSE between predicted and target element-count distributions
     (soft, so gradients still flow)."""
-    pred_probs = F.softmax(x0_pred[..., :NUM_ELEM], dim=-2)
+    # Softmax over element dim (-1), not atom dim (-2)
+    pred_probs = F.softmax(x0_pred[..., :NUM_ELEM], dim=-1)
     pred_elem_counts = pred_probs.sum(dim=-2)         # (*, E)
 
-    target_probs = F.softmax(x_clean[..., :NUM_ELEM], dim=-2)
-    target_elem_counts = target_probs.sum(dim=-2)     # (*, E)
+    # Use hard target counts for the clean state
+    # x_clean has one-hot elems in first NUM_ELEM slots
+    target_elem_counts = x_clean[..., :NUM_ELEM].sum(dim=-2)   # (*, E)
 
     return F.mse_loss(pred_elem_counts, target_elem_counts)
 
@@ -183,7 +185,7 @@ class LossWeights:
     denoising: float = 1.0
     bond_ce: float = 1.0
     valency_penalty: float = 0.5
-    element_conservation: float = 0.3
+    element_conservation: float = 1.0
 
 
 def compute_loss(
@@ -371,12 +373,16 @@ def train(
 
 def export_to_numpy(
     torch_model: TorchMolecularDenoiser,
+    schedule: str = "cosine",
 ) -> "MolecularDiffusionModel":
     """Copy weights into a NumPy MolecularDiffusionModel for use with the Supervisor."""
     from .model import MolecularDiffusionModel, NumpyLinear, NumpyGraphConv
 
     np_model = MolecularDiffusionModel(
-        hidden_dim=torch_model.hidden_dim, seed=0, use_input_proj=True,
+        hidden_dim=torch_model.hidden_dim,
+        seed=0,
+        use_input_proj=True,
+        schedule=schedule,
     )
 
     def _copy_linear(src: nn.Linear, dst: NumpyLinear) -> None:

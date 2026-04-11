@@ -68,13 +68,15 @@ def combustion_products():
     ]
 
 def acid_base_reactants():
-    """HCl + NaOH  (modelled as ions: H+ Cl- + Na+ OH-)"""
+    """HCl + NaOH (Na+ / OH- so atom counts balance with products)."""
     return [
         MolecularState("HCl", [
             Atom("H", 1), Atom("Cl", 1),
         ]),
         MolecularState("NaOH", [
-            Atom("O", 2), Atom("H", 1),
+            Atom("Na", 0, formal_charge=+1),
+            Atom("O", 1, formal_charge=-1),
+            Atom("H", 1),
         ]),
     ]
 
@@ -85,7 +87,8 @@ def acid_base_products():
             Atom("O", 2), Atom("H", 1), Atom("H", 1),
         ]),
         MolecularState("NaCl", [
-            Atom("Cl", 1),
+            Atom("Na", 0, formal_charge=+1),
+            Atom("Cl", 0, formal_charge=-1),
         ]),
     ]
 
